@@ -73,7 +73,7 @@ const DoctorAppointments = ({ navigation }) => {
       rate: 1,
     });
   };
-
+  // By Ogunyade Olamilekan Adeyanju
   const showModal = (message, success = false, errorType = "") => {
     setModalMessage(message);
     setModalSuccess(success);
