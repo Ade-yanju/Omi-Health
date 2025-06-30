@@ -1,0 +1,210 @@
+{
+  "Malaria": {
+    "symptoms": [
+      "fever",
+      "chills",
+      "sweating",
+      "headache",
+      "nausea",
+      "vomiting"
+    ],
+    "diagnosis": "Conduct Blood test for malaria parasites."
+  },
+  "Typhoid Fever": {
+    "symptoms": [
+      "prolonged fever",
+      "abdominal pain",
+      "weakness",
+      "constipation",
+      "diarrhea"
+    ],
+    "diagnosis": "Conduct Widal test, stool culture, and blood tests."
+  },
+  "Pneumonia": {
+    "symptoms": [
+      "cough with phlegm",
+      "fever",
+      "chest pain",
+      "shortness of breath"
+    ],
+    "diagnosis": "Conduct Chest X-ray, blood test, sputum culture."
+  },
+  "Diabetes": {
+    "symptoms": [
+      "frequent urination",
+      "excessive thirst",
+      "unexplained weight loss",
+      "blurred vision"
+    ],
+    "diagnosis": "Conduct Fasting blood sugar test, HbA1c test."
+  },
+  "Hypertension": {
+    "symptoms": ["headache", "dizziness", "blurred vision", "chest pain"],
+    "diagnosis": "Conduct Blood pressure monitoring."
+  },
+  "Asthma": {
+    "symptoms": [
+      "shortness of breath",
+      "wheezing",
+      "chest tightness",
+      "coughing"
+    ],
+    "diagnosis": "Conduct Lung function tests, peak flow measurement."
+  },
+  "Tuberculosis": {
+    "symptoms": ["persistent cough", "night sweats", "weight loss", "fatigue"],
+    "diagnosis": "Conduct Tuberculin skin test, chest X-ray, sputum analysis."
+  },
+  "COVID-19": {
+    "symptoms": [
+      "fever",
+      "dry cough",
+      "shortness of breath",
+      "loss of taste or smell"
+    ],
+    "diagnosis": "Conduct PCR test, rapid antigen test."
+  },
+  "Dengue Fever": {
+    "symptoms": [
+      "high fever",
+      "severe joint pain",
+      "skin rash",
+      "bleeding gums"
+    ],
+    "diagnosis": "Conduct Dengue NS1 antigen test, blood test."
+  },
+  "Anemia": {
+    "symptoms": ["fatigue", "pale skin", "shortness of breath", "dizziness"],
+    "diagnosis": "Conduct Complete blood count (CBC)."
+  },
+  "Food Poisoning": {
+    "symptoms": ["nausea", "vomiting", "diarrhea", "stomach cramps"],
+    "diagnosis": "Conduct Stool culture, blood test."
+  },
+  "Migraine": {
+    "symptoms": [
+      "severe headache",
+      "nausea",
+      "sensitivity to light",
+      "blurred vision"
+    ],
+    "diagnosis": "Conduct Clinical evaluation, headache diary."
+  },
+  "Arthritis": {
+    "symptoms": [
+      "joint pain",
+      "swelling",
+      "stiffness",
+      "reduced range of motion"
+    ],
+    "diagnosis": "Conduct X-rays, blood tests, physical examination."
+  },
+  "Hepatitis B": {
+    "symptoms": ["jaundice", "dark urine", "fatigue", "abdominal pain"],
+    "diagnosis": "Conduct Hepatitis B surface antigen test, liver function tests."
+  },
+  "Cholera": {
+    "symptoms": [
+      "severe diarrhea",
+      "dehydration",
+      "vomiting",
+      "rapid heartbeat"
+    ],
+    "diagnosis": "Conduct Stool test, rapid dipstick test."
+  },
+  "Sinusitis": {
+    "symptoms": [
+      "facial pain",
+      "nasal congestion",
+      "headache",
+      "postnasal drip"
+    ],
+    "diagnosis": "Conduct Nasal endoscopy, CT scan."
+  },
+  "Stroke": {
+    "symptoms": [
+      "sudden weakness",
+      "trouble speaking",
+      "loss of balance",
+      "vision problems"
+    ],
+    "diagnosis": "Conduct CT scan, MRI, blood tests."
+  },
+  "Kidney Stones": {
+    "symptoms": [
+      "severe back pain",
+      "painful urination",
+      "blood in urine",
+      "nausea"
+    ],
+    "diagnosis": "Conduct Ultrasound, CT scan, urine analysis."
+  },
+  "Appendicitis": {
+    "symptoms": ["abdominal pain", "nausea", "vomiting", "loss of appetite"],
+    "diagnosis": "Conduct Ultrasound, CT scan, blood test."
+  },
+  "Peptic Ulcer": {
+    "symptoms": ["burning stomach pain", "nausea", "bloating", "weight loss"],
+    "diagnosis": "Conduct Endoscopy, H. pylori test."
+  },
+  "Meningitis": {
+    "symptoms": ["stiff neck", "fever", "confusion", "severe headache"],
+    "diagnosis": "Conduct Lumbar puncture, blood test, MRI."
+  },
+  "Bronchitis": {
+    "symptoms": [
+      "persistent cough",
+      "chest discomfort",
+      "fatigue",
+      "shortness of breath"
+    ],
+    "diagnosis": "Conduct Chest X-ray, sputum culture."
+  },
+  "Gastroenteritis": {
+    "symptoms": ["diarrhea", "vomiting", "stomach cramps", "fever"],
+    "diagnosis": "Conduct Stool test, blood test."
+  },
+  "Heart Attack": {
+    "symptoms": ["chest pain", "shortness of breath", "nausea", "cold sweat"],
+    "diagnosis": "Conduct ECG, blood test, coronary angiogram."
+  },
+  "HIV/AIDS": {
+    "symptoms": ["fever", "swollen lymph nodes", "night sweats", "weight loss"],
+    "diagnosis": "Conduct HIV antibody test, CD4 count."
+  },
+  "Chickenpox": {
+    "symptoms": ["itchy rash", "fever", "tiredness", "loss of appetite"],
+    "diagnosis": "Conduct Clinical examination, PCR test."
+  },
+  "Epilepsy": {
+    "symptoms": ["seizures", "confusion", "unconsciousness", "staring spells"],
+    "diagnosis": "Conduct EEG, MRI, neurological exam."
+  },
+  "Scabies": {
+    "symptoms": [
+      "severe itching",
+      "rashes",
+      "skin burrows",
+      "sores from scratching"
+    ],
+    "diagnosis": "Conduct Skin scraping test, dermoscopy."
+  },
+  "Depression": {
+    "symptoms": [
+      "persistent sadness",
+      "loss of interest",
+      "fatigue",
+      "insomnia"
+    ],
+    "diagnosis": "Psychological evaluation, DSM-5 criteria."
+  },
+  "Gonorrhea": {
+    "symptoms": [
+      "unusual discharge",
+      "pain during urination",
+      "pain in the testicles",
+      "or lower abdomen"
+    ],
+    "diagnosis": "Conduct lab tests like nucleic acid amplification tests (NAATs) or cultures."
+  }
+}
