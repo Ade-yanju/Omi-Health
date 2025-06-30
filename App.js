@@ -28,6 +28,7 @@ import SymptomsChecker from "./screens/SymptomsChecker";
 import LanguageSelection from "./screens/LanguageSelection";
 import HealthWorkerAppointments from "./screens/HealthWorkerAppointments";
 import PatientAppointment from "./screens/PatientAppointment";
+import ChatInbox from "./screens/ChatInbox";
 
 const Stack = createStackNavigator();
 
@@ -75,6 +76,7 @@ function AppNavigation({ userRole }) {
           name="PatientAppointment"
           component={PatientAppointment}
         />
+        <Stack.Screen name="ChatInbox" component={ChatInbox} />
       </Stack.Navigator>
     </NavigationContainer>
   );

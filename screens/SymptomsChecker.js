@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Speech from "expo-speech";
-import symptomsData from "../data/symptomsData.json";
+import symptomsDataEn from "../data/symptomsDataEn.json";
+import symptomsDataYo from "../data/symptomsDataYo.json";
 import {
   getFirestore,
   collection,
@@ -18,7 +19,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import AnimatedModal from "../components/AnimatedModal"; // ✅ Import modal
+import AnimatedModal from "../components/AnimatedModal";
 
 const SymptomCheckerScreen = () => {
   const { t } = useTranslation();
@@ -28,18 +29,29 @@ const SymptomCheckerScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
   const [modalType, setModalType] = useState("success");
+  const [lastSpoken, setLastSpoken] = useState(""); // Track last TTS to prevent repetition
+
+  // Select language and dataset
+  const lang = t("lang_code") === "yo" ? "yo" : "en";
+  const symptomsData = lang === "yo" ? symptomsDataYo : symptomsDataEn;
+  const ttsLang = lang === "yo" ? "yo" : "en-US";
 
   const firestore = getFirestore();
   const auth = getAuth();
 
+  // Universal TTS; speaks if not already just spoken
   const speak = (message) => {
+    if (!message || lastSpoken === message) return;
+    Speech.stop();
     Speech.speak(message, {
-      language: t("lang_code") === "yo" ? "yo" : "en-US",
+      language: ttsLang,
       pitch: 1,
       rate: 1,
     });
+    setLastSpoken(message);
   };
 
+  // Show modal, speak automatically (single time)
   const showModal = (message, type = "success") => {
     setModalMessage(message);
     setModalType(type);
@@ -47,7 +59,9 @@ const SymptomCheckerScreen = () => {
     speak(message);
   };
 
+  // Analyze symptoms and diagnose in correct language
   const analyzeSymptoms = async () => {
+    setLastSpoken(""); // Reset for each new analysis
     if (symptoms.trim() === "") {
       const msg = t("enter_valid_symptoms");
       showModal(msg, "error");
@@ -74,6 +88,7 @@ const SymptomCheckerScreen = () => {
         const user = auth.currentUser;
         await addDoc(collection(firestore, "symptom_queries"), {
           userId: user?.uid || "guest",
+          language: lang,
           symptoms,
           result: diagnosis,
           createdAt: serverTimestamp(),
@@ -86,8 +101,21 @@ const SymptomCheckerScreen = () => {
       setAnalysisResult(diagnosis);
       showModal(diagnosis, "success");
       setLoading(false);
-    }, 1500);
+    }, 1200);
   };
+
+  // If analysisResult changes, speak it automatically (one time)
+  useEffect(() => {
+    if (analysisResult) {
+      speak(analysisResult);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisResult]);
+
+  // If user switches language, reset TTS
+  useEffect(() => {
+    setLastSpoken("");
+  }, [lang]);
 
   return (
     <SafeAreaView style={styles.container}>

@@ -1,0 +1,265 @@
+{
+  "Malaria": {
+    "symptoms": [
+      "Ara n gbona mi",
+      "O n mu mi tutu",
+      "Mo n yo pupọ",
+      "Ori n dun mi",
+      "Inu mi n dun mi",
+      "Mo n da loju"
+    ],
+    "diagnosis": "Se idanwo eje lati mo boya o ni malaria."
+  },
+  "Typhoid Fever": {
+    "symptoms": [
+      "Ara n gbona fun igba pipẹ",
+      "Inu mi n se mi",
+      "Ara mi n ra mi",
+      "Mi o le tu ara silẹ daadaa",
+      "Mo n ṣe pupọ"
+    ],
+    "diagnosis": "Se idanwo eje ati ito re (Widal test)."
+  },
+  "Pneumonia": {
+    "symptoms": [
+      "Mo n fe fọnka pupọ",
+      "Ara n gbona",
+      "Ayà mi n dun mi",
+      "E mi n nira fun mi"
+    ],
+    "diagnosis": "Ki won wo ayà re (X-ray), ki won tun se idanwo eje ati sputum."
+  },
+  "Diabetes": {
+    "symptoms": [
+      "Mo n lo si ile-igbọnsẹ pupọ",
+      "Omi n pa mi",
+      "Ara mi n lọ silẹ",
+      "Oju mi n daku"
+    ],
+    "diagnosis": "Se idanwo suga ninu eje re."
+  },
+  "Hypertension": {
+    "symptoms": ["Ori n dun mi", "Mo n yọ", "Oju mi n daku", "Ayà n dun mi"],
+    "diagnosis": "Wọn gbọdọ fi ẹrọ to iwọn titẹ ẹ̀jẹ̀ rẹ."
+  },
+  "Asthma": {
+    "symptoms": [
+      "E mi n nira fun mi",
+      "Mo n fe fọnka pẹ̀lú ariwo",
+      "Ayà mi n le mi",
+      "Mo n fe fọnka"
+    ],
+    "diagnosis": "Ki won se idanwo e mi ati peak flow."
+  },
+  "Tuberculosis": {
+    "symptoms": [
+      "Mo n fe fọnka fun igba to gun",
+      "Mo n se pupọ ni alẹ",
+      "Ara mi n lọ silẹ",
+      "Ara mi n ra mi"
+    ],
+    "diagnosis": "Se idanwo X-ray ayà, sputum, ati idanwo ara."
+  },
+  "COVID-19": {
+    "symptoms": [
+      "Ara n gbona",
+      "Mo n fe fọnka lai si omi",
+      "E mi n nira fun mi",
+      "Mi o le ri adun ounje, mi o le ri oorun"
+    ],
+    "diagnosis": "Se idanwo PCR tabi rapid test."
+  },
+  "Dengue Fever": {
+    "symptoms": [
+      "Ara n gbona pupọ",
+      "Egungun mi n dun mi gan",
+      "Awọ ara mi n yipada",
+      "Eje n jade lati enu mi"
+    ],
+    "diagnosis": "Se idanwo eje fun dengue."
+  },
+  "Anemia": {
+    "symptoms": [
+      "Ara mi n ra mi",
+      "Awọ mi ti n su",
+      "E mi n nira fun mi",
+      "Mo n yọ"
+    ],
+    "diagnosis": "Se idanwo ẹ̀jẹ̀ CBC."
+  },
+  "Food Poisoning": {
+    "symptoms": [
+      "Inu mi n se mi",
+      "Mo n da loju",
+      "Mo n ṣe",
+      "Inu mi n dun mi"
+    ],
+    "diagnosis": "Se idanwo lori ito ati eje."
+  },
+  "Migraine": {
+    "symptoms": [
+      "Ori n dun mi gan-an",
+      "Inu mi n se mi",
+      "Oju mi ko le farabalẹ si imọlẹ",
+      "Oju mi n daku"
+    ],
+    "diagnosis": "Dokita ni yoo ba e sọrọ ati ki e maa ko bi ori se n se yin."
+  },
+  "Arthritis": {
+    "symptoms": [
+      "Egungun mi n dun mi",
+      "Egungun mi n yo",
+      "Egungun mi ko le rọ",
+      "Egungun mi n gbona"
+    ],
+    "diagnosis": "Ki won wo egungun re (X-ray), ki won se idanwo eje, ki dokita ba e wo."
+  },
+  "Hepatitis B": {
+    "symptoms": [
+      "Awọ mi ti n yọ ofeefee",
+      "Ito mi ti n dudu",
+      "Ara mi n ra mi",
+      "Inu mi n dun mi"
+    ],
+    "diagnosis": "Se idanwo Hepatitis B, ki won tun wo bi ẹdọ se n sise."
+  },
+  "Cholera": {
+    "symptoms": [
+      "Mo n ṣe pupọ gan-an",
+      "Ara mi n fẹ omi pupọ",
+      "Mo n da loju",
+      "Okan mi n yára"
+    ],
+    "diagnosis": "Se idanwo lori ito."
+  },
+  "Sinusitis": {
+    "symptoms": [
+      "Ori mi n dun mi ni oju",
+      "Imu mi ti kun",
+      "Ori n dun mi",
+      "Omi n bọ lati inu imu mi"
+    ],
+    "diagnosis": "Ki won wo imu re, ki won tun se CT scan."
+  },
+  "Stroke": {
+    "symptoms": [
+      "Ara mi lo kan ju bẹẹ lo (apakan ara mi ko ṣiṣẹ)",
+      "Oro nira fun mi lati sọ",
+      "Mi o le duro daadaa",
+      "Oju mi n daku"
+    ],
+    "diagnosis": "Se idanwo CT, MRI, ati eje."
+  },
+  "Kidney Stones": {
+    "symptoms": [
+      "Eyin mi n dun mi to lagbara",
+      "Mo n ni irora nigba mo ba n to",
+      "Eje n jade ninu ito mi",
+      "Inu mi n se mi"
+    ],
+    "diagnosis": "Se idanwo ultrasound, CT scan ati ito."
+  },
+  "Appendicitis": {
+    "symptoms": [
+      "Inu mi n dun mi gan",
+      "Inu mi n se mi",
+      "Mo n da loju",
+      "Mi o ni ife jeun"
+    ],
+    "diagnosis": "Se ultrasound, CT scan ati idanwo eje."
+  },
+  "Peptic Ulcer": {
+    "symptoms": [
+      "Inu mi n jo mi",
+      "Inu mi n se mi",
+      "Inu mi n fọ",
+      "Ara mi n lọ silẹ"
+    ],
+    "diagnosis": "Se endoscopy ati idanwo fun H. pylori."
+  },
+  "Meningitis": {
+    "symptoms": [
+      "Orun mi n le",
+      "Ara n gbona mi",
+      "Mo n ya were",
+      "Ori n dun mi gan"
+    ],
+    "diagnosis": "Se lumbar puncture, idanwo eje, MRI."
+  },
+  "Bronchitis": {
+    "symptoms": [
+      "Mo n fe fọnka nigba gbogbo",
+      "Ayà mi n dun mi",
+      "Ara mi n ra mi",
+      "E mi n nira fun mi"
+    ],
+    "diagnosis": "Ki won wo ayà re (X-ray), ki won se idanwo sputum."
+  },
+  "Gastroenteritis": {
+    "symptoms": ["Mo n ṣe", "Mo n da loju", "Inu mi n dun mi", "Ara mi gbona"],
+    "diagnosis": "Se idanwo lori ito ati eje."
+  },
+  "Heart Attack": {
+    "symptoms": [
+      "Ayà n dun mi gan",
+      "E mi n nira fun mi",
+      "Inu mi n se mi",
+      "Ara mi n tutu lojiji"
+    ],
+    "diagnosis": "Se ECG, idanwo eje, ati coronary angiogram."
+  },
+  "HIV/AIDS": {
+    "symptoms": [
+      "Ara n gbona mi",
+      "Egungun ni ayika (lymph nodes) n tobi",
+      "Mo n se pupọ ni alẹ",
+      "Ara mi n lọ silẹ"
+    ],
+    "diagnosis": "Se idanwo HIV ati CD4 count."
+  },
+  "Chickenpox": {
+    "symptoms": [
+      "Ato awọ ara mi n ya",
+      "Ara n gbona mi",
+      "Ara mi n ra mi",
+      "Mi o ni ife jeun"
+    ],
+    "diagnosis": "Ki dokita ba e wo, se PCR test."
+  },
+  "Epilepsy": {
+    "symptoms": [
+      "Ara mi n gbọn lojiji (seizure)",
+      "Mo le ya were",
+      "Mo le padanu imo",
+      "Mo le ma le fi oju si nkan"
+    ],
+    "diagnosis": "Se EEG, MRI, ki dokita ba e wo."
+  },
+  "Scabies": {
+    "symptoms": [
+      "Ara mi n run gan-an",
+      "Awọ mi n ya",
+      "Ona kekere n yọ lori ara mi",
+      "Mo n fọ ara mi de pipọn"
+    ],
+    "diagnosis": "Se idanwo awọ ara."
+  },
+  "Depression": {
+    "symptoms": [
+      "Okan mi n banujẹ nigbagbogbo",
+      "Mi o fẹran nkan ti mo maa n fẹran",
+      "Ara mi n ra mi",
+      "Mi o le sun dada"
+    ],
+    "diagnosis": "Dokita mind (psychologist) ni yoo sọrọ pelu e."
+  },
+  "Gonorrhea": {
+    "symptoms": [
+      "Omi alaimọ n jade lati ibalopo",
+      "Irora nigba mo ba n to",
+      "Irora ni abẹkunrẹrẹ",
+      "Tabi ni isalẹ ikun"
+    ],
+    "diagnosis": "Se idanwo lab fun gonorrhea (NAAT, culture)."
+  }
+}

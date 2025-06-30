@@ -118,5 +118,8 @@
   "approve": "Approve",
   "reject": "Reject",
   "enter_valid_email": "Enter Valid Email",
-  "chat_nav_error": "Unable to start chat. Please try again later."
+  "chat_nav_error": "Unable to start chat. Please try again later.",
+  "upload_cv": "Upload CV",
+  "book_new_appointment": "Book New Appointment",
+  "no_appointments": "No Appointments"
 }

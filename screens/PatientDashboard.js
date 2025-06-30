@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -18,15 +18,18 @@ import { getAuth, signOut } from "firebase/auth";
 import {
   getFirestore,
   doc,
-  getDoc,
+  onSnapshot,
   collection,
   query,
   where,
-  getDocs,
   updateDoc,
+  orderBy,
 } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useFocusEffect } from "@react-navigation/native";
 import AnimatedModal from "../components/AnimatedModal";
+import { supabase } from "../services/supabase";
+
+const APPOINTMENTS_PER_PAGE = 3;
 
 const PatientDashboard = ({ navigation }) => {
   const { t } = useTranslation();
@@ -38,91 +41,132 @@ const PatientDashboard = ({ navigation }) => {
     message: "",
     type: "success",
   });
+  const [currentPage, setCurrentPage] = useState(1);
 
   const auth = getAuth();
   const db = getFirestore();
-  const storage = getStorage();
 
+  // Prevent repeated TTS
+  const [lastSpoken, setLastSpoken] = useState("");
+  // Used to cancel TTS on navigation
+  const stopTTS = () => Speech.stop();
+
+  // Features (ensure translation)
   const features = [
-    { id: "1", name: "Appointments", screen: "PatientAppointment", icon: "📅" },
-    { id: "2", name: "Chat", screen: "ChatWithHealthWorker", icon: "💬" },
+    {
+      id: "1",
+      name: t("Appointments"),
+      screen: "PatientAppointment",
+      icon: "📅",
+    },
+    {
+      id: "2",
+      name: t("Chat"),
+      screen: "ChatInbox",
+      icon: "💬",
+    },
     {
       id: "3",
-      name: "Symptoms Checker",
+      name: t("Symptoms Checker"),
       screen: "SymptomsChecker",
       icon: "🔍",
     },
     {
       id: "5",
-      name: "Search for HealthWorkers",
+      name: t("Search for HealthWorkers"),
       screen: "SearchForHealthWorkers",
       icon: "🩺",
     },
   ];
 
-  const speak = (text) => {
-    Speech.speak(text, {
-      language: t("lang_code") === "yo" ? "yo" : "en-US",
-      rate: 0.5,
-    });
-  };
+  // Speak if not already spoken
+  const speak = useCallback(
+    (text) => {
+      if (!text || text === lastSpoken) return;
+      setLastSpoken(text);
+      Speech.stop();
+      Speech.speak(text, {
+        language: t("lang_code") === "yo" ? "yo" : "en-US",
+        rate: 0.5,
+        onDone: () => setLastSpoken(""),
+        onStopped: () => setLastSpoken(""),
+        onError: () => setLastSpoken(""),
+      });
+    },
+    [lastSpoken, t]
+  );
 
   const showModal = (message, type = "success") => {
     speak(message);
     setModal({ visible: true, message, type });
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      stopTTS();
+      setLastSpoken("");
+      setTimeout(() => {
+        speak(t("welcome_dashboard"));
+      }, 300);
+      return () => {
+        stopTTS();
+      };
+    }, [t, speak])
+  );
+
   useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     registerForPushNotifications();
-    fetchPatientData();
-    fetchAppointments();
+
+    // Live profile
+    const unsubscribeUser = onSnapshot(
+      doc(db, "users", user.uid),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setPatient(data);
+          speak(`${t("welcome_back")} ${data.name || ""}`);
+        }
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+
+    // Live appointments (ONLY those not canceled or deleted)
+    const appointmentsQuery = query(
+      collection(db, "appointments"),
+      where("patientId", "==", user.uid),
+      orderBy("date", "desc")
+    );
+    const unsubscribeAppointments = onSnapshot(
+      appointmentsQuery,
+      (snapshot) => {
+        // Only show appointments that are not canceled or deleted
+        const validAppointments = snapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((a) => a.status !== "canceled" && a.status !== "deleted");
+        setAppointments(validAppointments);
+        setCurrentPage(1); // Reset page if data changes
+      }
+    );
+
+    return () => {
+      unsubscribeUser();
+      unsubscribeAppointments();
+      stopTTS();
+    };
+    // eslint-disable-next-line
   }, []);
 
-  const fetchPatientData = async () => {
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error(t("unauthenticated"));
-
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        setPatient(data);
-        speak(`${t("welcome_back")} ${data.name}`);
-      }
-    } catch (error) {
-      showModal(t("fetch_failed"), "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAppointments = async () => {
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
-      const q = query(
-        collection(db, "appointments"),
-        where("patient_id", "==", user.uid)
-      );
-      const snapshot = await getDocs(q);
-      setAppointments(
-        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-      );
-    } catch (err) {
-      console.error("Appointment Fetch Error:", err);
-    }
-  };
-
+  // Cancel and (optionally) hard-delete appointment from Firestore
   const cancelAppointment = async (id) => {
-    try {
-      const appointmentRef = doc(db, "appointments", id);
-      await updateDoc(appointmentRef, { status: "canceled" });
-      showModal(t("appointment_canceled"));
-      fetchAppointments();
-    } catch (err) {
-      showModal(t("cancel_failed"), "error");
-    }
+    await updateDoc(doc(db, "appointments", id), { status: "canceled" });
+    showModal(t("appointment_canceled"));
+    // No need to manually filter, real-time listener will update UI
   };
 
   const registerForPushNotifications = async () => {
@@ -131,74 +175,57 @@ const PatientDashboard = ({ navigation }) => {
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      navigation.replace("LoginScreen");
-    } catch (err) {
-      showModal(t("logout_failed"), "error");
-    }
+    stopTTS();
+    await signOut(auth);
+    navigation.replace("LoginScreen");
   };
 
   const pickImageAndUpload = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission denied", "We need access to your gallery.");
-      return;
-    }
-
+    if (!permission.granted)
+      return Alert.alert(t("permission_denied"), t("gallery_access_required"));
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaType.Image, // Correct! (case sensitive)
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
 
-    if (!result.canceled) {
-      try {
-        const user = auth.currentUser;
-        const imageUri = result.assets[0].uri;
-        const imageBlob = await (await fetch(imageUri)).blob();
-        const storageRef = ref(storage, `profilePictures/${user.uid}.jpg`);
-        await uploadBytes(storageRef, imageBlob);
-        const downloadURL = await getDownloadURL(storageRef);
-
-        await updateDoc(doc(db, "users", user.uid), {
-          profilePic: downloadURL,
-        });
-        setPatient((prev) => ({ ...prev, profilePic: downloadURL }));
-        showModal(t("profile_updated"));
-      } catch (error) {
-        console.error("Upload failed:", error);
-        showModal(t("upload_failed"), "error");
-      }
+    // Check new structure for Expo SDK 49/50+
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      showModal(t("no_image_selected"), "error");
+      return;
     }
-  };
-
-  const navigateToChat = async () => {
     try {
       const user = auth.currentUser;
-      if (!user || !patient) {
-        showModal(t("unauthenticated"), "error");
-        return;
-      }
-
-      const chatId = `${user.uid}_healthworker`;
-      navigation.navigate("ChatWithHealthWorker", {
-        chatId,
-        userId: user.uid,
-        patientName: patient.name,
+      const imageBlob = await (await fetch(result.assets[0].uri)).blob();
+      const filePath = `${user.uid}/${Date.now()}_profile.jpg`;
+      const { error } = await supabase.storage
+        .from("profile-pictures")
+        .upload(filePath, imageBlob, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: "image/jpeg",
+        });
+      if (error) throw error;
+      const { data } = supabase.storage
+        .from("profile-pictures")
+        .getPublicUrl(filePath);
+      await updateDoc(doc(db, "users", user.uid), {
+        profilePic: data.publicUrl,
       });
+      showModal(t("profile_updated"));
     } catch (err) {
-      console.error("Chat navigation error:", err);
-      showModal(t("chat_nav_error"), "error");
+      showModal(t("upload_failed"), "error");
     }
   };
 
-  const handleFeatureNavigation = (item) => {
-    item.screen === "ChatWithHealthWorker"
-      ? navigateToChat()
-      : navigation.navigate(item.screen);
-  };
+  // PAGINATION logic
+  const totalPages = Math.ceil(appointments.length / APPOINTMENTS_PER_PAGE);
+  const paginatedAppointments = appointments.slice(
+    (currentPage - 1) * APPOINTMENTS_PER_PAGE,
+    currentPage * APPOINTMENTS_PER_PAGE
+  );
 
   if (loading) {
     return (
@@ -218,7 +245,12 @@ const PatientDashboard = ({ navigation }) => {
       />
 
       <View style={styles.profileSection}>
-        <TouchableOpacity onPress={pickImageAndUpload}>
+        <TouchableOpacity
+          onPress={() => {
+            stopTTS();
+            pickImageAndUpload();
+          }}
+        >
           {patient?.profilePic ? (
             <Image
               source={{ uri: patient.profilePic }}
@@ -231,6 +263,16 @@ const PatientDashboard = ({ navigation }) => {
           )}
         </TouchableOpacity>
         <Text style={styles.profileText}>{patient?.name || t("user")}</Text>
+        {patient?.age && (
+          <Text style={styles.profileSubText}>
+            {t("Age")}: {patient.age}
+          </Text>
+        )}
+        {patient?.gender && (
+          <Text style={styles.profileSubText}>
+            {t("Gender")}: {patient.gender}
+          </Text>
+        )}
       </View>
 
       <FlatList
@@ -240,17 +282,22 @@ const PatientDashboard = ({ navigation }) => {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.card}
-            onPress={() => handleFeatureNavigation(item)}
+            onPress={() => {
+              stopTTS();
+              navigation.navigate(item.screen); // always route to ChatInbox for chat
+              speak(item.name);
+            }}
+            onLongPress={() => speak(item.name)}
           >
             <Text style={styles.emoji}>{item.icon}</Text>
-            <Text style={styles.cardText}>{t(item.name)}</Text>
+            <Text style={styles.cardText}>{item.name}</Text>
           </TouchableOpacity>
         )}
       />
 
       <Text style={styles.header}>{t("your_appointments")}</Text>
       <FlatList
-        data={appointments}
+        data={paginatedAppointments}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={styles.appointmentCard}>
@@ -262,12 +309,47 @@ const PatientDashboard = ({ navigation }) => {
             </Text>
             <TouchableOpacity
               style={styles.cancelButton}
-              onPress={() => cancelAppointment(item.id)}
+              onPress={() => {
+                stopTTS();
+                cancelAppointment(item.id);
+                speak(t("appointment_canceled"));
+              }}
             >
               <Text style={styles.cancelText}>{t("cancel_appointment")}</Text>
             </TouchableOpacity>
           </View>
         )}
+        ListFooterComponent={() =>
+          appointments.length > APPOINTMENTS_PER_PAGE && (
+            <View style={styles.paginationContainer}>
+              <TouchableOpacity
+                disabled={currentPage === 1}
+                onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                style={[
+                  styles.paginationButton,
+                  currentPage === 1 && styles.paginationButtonDisabled,
+                ]}
+              >
+                <Text style={styles.paginationText}>{t("previous")}</Text>
+              </TouchableOpacity>
+              <Text style={styles.paginationPageIndicator}>
+                {currentPage}/{totalPages}
+              </Text>
+              <TouchableOpacity
+                disabled={currentPage === totalPages}
+                onPress={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                style={[
+                  styles.paginationButton,
+                  currentPage === totalPages && styles.paginationButtonDisabled,
+                ]}
+              >
+                <Text style={styles.paginationText}>{t("next")}</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        }
       />
 
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -298,6 +380,7 @@ const styles = StyleSheet.create({
     color: "#00796b",
     marginTop: 8,
   },
+  profileSubText: { fontSize: 16, color: "#666", marginTop: 2 },
   card: {
     flex: 1,
     margin: 10,
@@ -336,6 +419,36 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   logoutText: { color: "white", fontWeight: "bold", fontSize: 16 },
+  // Pagination styles
+  paginationContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  paginationButton: {
+    padding: 10,
+    backgroundColor: "#00796b",
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: "center",
+    marginHorizontal: 5,
+  },
+  paginationButtonDisabled: {
+    backgroundColor: "#B2DFDB",
+  },
+  paginationText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  paginationPageIndicator: {
+    marginHorizontal: 12,
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#00796b",
+  },
 });
 
 export default PatientDashboard;

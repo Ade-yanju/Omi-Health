@@ -1,314 +1,4 @@
-// import React, { useState, useEffect } from "react";
-// import {
-//   View,
-//   Text,
-//   TextInput,
-//   TouchableOpacity,
-//   FlatList,
-//   StyleSheet,
-//   ActivityIndicator,
-// } from "react-native";
-// import { SafeAreaView } from "react-native-safe-area-context";
-// import { Audio } from "expo-av";
-// import * as Speech from "expo-speech";
-// import { useNavigation } from "@react-navigation/native";
-// import { useTranslation } from "react-i18next";
-// import { WebView } from "react-native-webview";
-// import {
-//   collection,
-//   query,
-//   where,
-//   orderBy,
-//   addDoc,
-//   onSnapshot,
-//   serverTimestamp,
-// } from "firebase/firestore";
-// import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-// import { firestore, storage } from "../services/firebase";
-
-// const HealthWorkerChatScreen = ({ route }) => {
-//   const { t } = useTranslation();
-//   const navigation = useNavigation();
-//   const { chatId, userId, patientName } = route.params || {};
-
-//   const [messages, setMessages] = useState([]);
-//   const [input, setInput] = useState("");
-//   const [recording, setRecording] = useState(null);
-//   const [loading, setLoading] = useState(true);
-//   const [isTTSMuted, setIsTTSMuted] = useState(false);
-//   const [showJitsi, setShowJitsi] = useState(false);
-//   const [typingStatus, setTypingStatus] = useState(false);
-
-//   useEffect(() => {
-//     if (!chatId) return;
-
-//     const msgQuery = query(
-//       collection(firestore, "messages"),
-//       where("chatId", "==", chatId),
-//       orderBy("createdAt", "desc")
-//     );
-
-//     const unsubscribe = onSnapshot(msgQuery, (snapshot) => {
-//       const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-//       setMessages(msgs);
-//       setLoading(false);
-//     });
-
-//     return () => unsubscribe();
-//   }, [chatId]);
-
-//   const speak = (text) => {
-//     if (!isTTSMuted && text) {
-//       Speech.speak(text, {
-//         language: t("lang_code") === "yo" ? "yo" : "en-US",
-//         rate: 0.5,
-//       });
-//     }
-//   };
-
-//   const sendMessage = async () => {
-//     if (!input.trim()) return;
-//     await addDoc(collection(firestore, "messages"), {
-//       chatId,
-//       senderId: userId,
-//       message: input,
-//       createdAt: serverTimestamp(),
-//       read: false,
-//     });
-//     speak(input);
-//     setInput("");
-//     setTypingStatus(false);
-//   };
-
-//   const startRecording = async () => {
-//     const { status } = await Audio.requestPermissionsAsync();
-//     if (status !== "granted") return alert(t("mic_permission"));
-
-//     const newRecording = new Audio.Recording();
-//     await newRecording.prepareToRecordAsync(
-//       Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY
-//     );
-//     await newRecording.startAsync();
-//     setRecording(newRecording);
-//     speak(t("recording_started"));
-//   };
-
-//   const stopRecording = async () => {
-//     try {
-//       await recording.stopAndUnloadAsync();
-//       const uri = recording.getURI();
-//       const blob = await (await fetch(uri)).blob();
-
-//       const filename = `audio_${Date.now()}.m4a`;
-//       const audioRef = ref(storage, `audios/${filename}`);
-//       await uploadBytes(audioRef, blob);
-//       const downloadURL = await getDownloadURL(audioRef);
-
-//       await addDoc(collection(firestore, "messages"), {
-//         chatId,
-//         senderId: userId,
-//         audioUrl: downloadURL,
-//         createdAt: serverTimestamp(),
-//         read: false,
-//       });
-
-//       setRecording(null);
-//       speak(t("recording_stopped"));
-//     } catch (error) {
-//       console.error("Audio upload failed", error);
-//       speak(t("upload_failed"));
-//     }
-//   };
-
-//   const playAudio = async (url) => {
-//     const { sound } = await Audio.Sound.createAsync({ uri: url });
-//     await sound.playAsync();
-//     speak(t("playing_audio"));
-//   };
-
-//   const toggleTTSMute = () => {
-//     const status = !isTTSMuted;
-//     setIsTTSMuted(status);
-//     speak(status ? t("tts_muted") : t("tts_unmuted"));
-//   };
-
-//   const startVideoCall = () => {
-//     speak(t("video_call_started"));
-//     setShowJitsi(true);
-//   };
-
-//   if (!chatId || loading) {
-//     return (
-//       <SafeAreaView style={styles.container}>
-//         <ActivityIndicator size="large" color="#00796b" />
-//       </SafeAreaView>
-//     );
-//   }
-
-//   if (showJitsi) {
-//     return (
-//       <WebView
-//         source={{
-//           uri: `https://meet.jit.si/${chatId}#userInfo.displayName=\"${encodeURIComponent(
-//             patientName || "Patient"
-//           )}\"`,
-//         }}
-//         style={{ flex: 1 }}
-//         allowsInlineMediaPlayback
-//         javaScriptEnabled
-//         mediaPlaybackRequiresUserAction={false}
-//       />
-//     );
-//   }
-
-//   return (
-//     <SafeAreaView style={styles.container}>
-//       <Text style={styles.header}>
-//         {t("chat_with")} {patientName}
-//       </Text>
-
-//       <FlatList
-//         data={messages}
-//         keyExtractor={(item) => item.id}
-//         inverted
-//         renderItem={({ item }) => (
-//           <View
-//             style={[
-//               styles.messageBubble,
-//               item.senderId === userId ? styles.sent : styles.received,
-//             ]}
-//           >
-//             {item.message && (
-//               <Text style={styles.messageText}>{item.message}</Text>
-//             )}
-//             {item.audioUrl && (
-//               <TouchableOpacity onPress={() => playAudio(item.audioUrl)}>
-//                 <Text style={styles.audioPlayText}>{t("play_audio")}</Text>
-//               </TouchableOpacity>
-//             )}
-//             <Text style={styles.timestamp}>
-//               {item.createdAt?.toDate?.().toLocaleTimeString?.() || ""}
-//             </Text>
-//           </View>
-//         )}
-//       />
-
-//       <View style={styles.actionButtons}>
-//         <TouchableOpacity style={styles.videoButton} onPress={startVideoCall}>
-//           <Text style={styles.videoButtonText}>{t("start_video_call")}</Text>
-//         </TouchableOpacity>
-//       </View>
-
-//       <View style={styles.inputContainer}>
-//         <TextInput
-//           style={styles.input}
-//           value={input}
-//           onChangeText={(text) => {
-//             setInput(text);
-//             setTypingStatus(!!text);
-//           }}
-//           placeholder={t("type_message")}
-//         />
-//         <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-//           <Text style={styles.sendText}>{t("send")}</Text>
-//         </TouchableOpacity>
-//         <TouchableOpacity
-//           style={styles.recordButton}
-//           onPress={recording ? stopRecording : startRecording}
-//         >
-//           <Text style={styles.recordText}>
-//             {recording ? t("stop") : t("record")}
-//           </Text>
-//         </TouchableOpacity>
-//       </View>
-
-//       <TouchableOpacity style={styles.toggleTTSButton} onPress={toggleTTSMute}>
-//         <Text style={styles.toggleTTSButtonText}>
-//           {isTTSMuted ? t("tts_unmuted") : t("tts_muted")}
-//         </Text>
-//       </TouchableOpacity>
-//     </SafeAreaView>
-//   );
-// };
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, backgroundColor: "#E8F5E9", padding: 10 },
-//   header: {
-//     fontSize: 20,
-//     fontWeight: "bold",
-//     textAlign: "center",
-//     color: "#00796b",
-//   },
-//   messageBubble: {
-//     padding: 10,
-//     borderRadius: 10,
-//     marginBottom: 5,
-//     maxWidth: "80%",
-//   },
-//   sent: { alignSelf: "flex-end", backgroundColor: "#00796b" },
-//   received: { alignSelf: "flex-start", backgroundColor: "#A5D6A7" },
-//   messageText: { color: "white", fontSize: 16 },
-//   timestamp: { fontSize: 12, color: "gray", alignSelf: "flex-end" },
-//   inputContainer: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     paddingTop: 10,
-//   },
-//   input: {
-//     flex: 1,
-//     backgroundColor: "white",
-//     padding: 10,
-//     borderRadius: 10,
-//     borderWidth: 1,
-//     borderColor: "#00796b",
-//   },
-//   sendButton: {
-//     backgroundColor: "#00796b",
-//     padding: 10,
-//     borderRadius: 10,
-//     marginLeft: 5,
-//   },
-//   sendText: { color: "white", fontWeight: "bold" },
-//   recordButton: {
-//     backgroundColor: "#d32f2f",
-//     padding: 10,
-//     borderRadius: 10,
-//     marginLeft: 5,
-//   },
-//   recordText: { color: "white", fontWeight: "bold" },
-//   audioPlayText: {
-//     color: "blue",
-//     fontWeight: "bold",
-//     textAlign: "center",
-//     marginTop: 5,
-//   },
-//   actionButtons: {
-//     flexDirection: "row",
-//     justifyContent: "center",
-//     marginVertical: 10,
-//   },
-//   videoButton: {
-//     backgroundColor: "#0288D1",
-//     padding: 15,
-//     borderRadius: 10,
-//   },
-//   videoButtonText: { color: "white", fontWeight: "bold" },
-//   toggleTTSButton: {
-//     backgroundColor: "#0288D1",
-//     padding: 10,
-//     borderRadius: 10,
-//     marginTop: 10,
-//   },
-//   toggleTTSButtonText: {
-//     color: "white",
-//     fontWeight: "bold",
-//     textAlign: "center",
-//   },
-// });
-
-// export default HealthWorkerChatScreen;
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -317,13 +7,12 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Audio } from "expo-av";
-import * as Speech from "expo-speech";
-import { useNavigation } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
+import { Video } from "expo-av";
 import { useTranslation } from "react-i18next";
-import { WebView } from "react-native-webview";
 import {
   collection,
   query,
@@ -332,223 +21,376 @@ import {
   addDoc,
   onSnapshot,
   serverTimestamp,
+  getDoc,
+  setDoc,
+  doc,
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { firestore, storage } from "../services/firebase";
+import { firestore } from "../services/firebase";
+import { supabase } from "../services/supabase";
+import { Ionicons, Feather } from "@expo/vector-icons";
+import { getAuth } from "firebase/auth";
 
-const HealthWorkerChatScreen = ({ route }) => {
+// Deterministic chat ID
+const getChatId = (a, b) => [a, b].sort().join("_");
+
+const fetchUserProfile = async (uid) => {
+  if (!uid) return null;
+  try {
+    const userDoc = await getDoc(doc(firestore, "users", uid));
+    if (userDoc.exists()) return { ...userDoc.data(), id: uid };
+    return null;
+  } catch (e) {
+    console.error(`Error fetching user profile for ${uid}:`, e);
+    return null;
+  }
+};
+
+const ensureChatExists = async (chatId, uid1, uid2) => {
+  const chatRef = doc(firestore, "chats", chatId);
+  const chatDoc = await getDoc(chatRef);
+  if (!chatDoc.exists()) {
+    await setDoc(chatRef, {
+      chatId,
+      participants: [uid1, uid2],
+      status: "active",
+      createdAt: serverTimestamp(),
+      lastMessage: "",
+      lastMessageTime: serverTimestamp(),
+    });
+  }
+};
+
+const ChatWithHealthworker = ({ route, navigation }) => {
   const { t } = useTranslation();
-  const navigation = useNavigation();
-  const { chatId, userId, patientName } = route.params || {};
+  const params = route?.params ?? {};
 
+  const patientId = params.patientId;
+  const healthworkerId = params.healthworkerId;
+  const currentUser = getAuth().currentUser;
+  const myUid = currentUser?.uid || null;
+  const chatId =
+    patientId && healthworkerId ? getChatId(patientId, healthworkerId) : null;
+
+  const [myProfile, setMyProfile] = useState(null);
+  const [otherProfile, setOtherProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [recording, setRecording] = useState(null);
+  const [showAttachments, setShowAttachments] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isTTSMuted, setIsTTSMuted] = useState(false);
-  const [showJitsi, setShowJitsi] = useState(false);
-  const [typingStatus, setTypingStatus] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
+  // Media upload helpers (Supabase, chat-media bucket)
+  const uploadToSupabase = useCallback(
+    async (typeFolder, fileUri, fileName) => {
+      try {
+        if (!supabase || !supabase.storage) {
+          throw new Error("Supabase client is not initialized.");
+        }
+        const folder = typeFolder === "images" ? "images" : "videos";
+        const path = `${folder}/${myUid}_${Date.now()}_${fileName}`;
+
+        const response = await fetch(fileUri);
+        const blob = await response.blob();
+
+        const { error } = await supabase.storage
+          .from("chat-media")
+          .upload(path, blob, { cacheControl: "3600", upsert: false });
+        if (error) throw error;
+        const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
+        if (!data || !data.publicUrl)
+          throw new Error("Failed to get public URL after upload.");
+        return data.publicUrl;
+      } catch (error) {
+        Alert.alert("Upload Failed", error.message);
+        return null;
+      }
+    },
+    [myUid]
+  );
+
+  // Pick image
+  const pickImage = async () => {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert("Permission Denied", "Image library access required.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets?.length > 0 && myUid) {
+        const uri = result.assets[0].uri;
+        const fileName = uri.split("/").pop() || "image.jpg";
+        const publicUrl = await uploadToSupabase("images", uri, fileName);
+        if (publicUrl) {
+          await safeAddMessage({ imageUrl: publicUrl });
+        }
+      }
+    } catch (e) {
+      Alert.alert("Image Upload Failed", e.message);
+    }
+  };
+
+  // Pick video
+  const pickVideo = async () => {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert("Permission Denied", "Video library access required.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.length > 0 && myUid) {
+        const uri = result.assets[0].uri;
+        const fileName = uri.split("/").pop() || "video.mp4";
+        const publicUrl = await uploadToSupabase("videos", uri, fileName);
+        if (publicUrl) {
+          await safeAddMessage({ videoUrl: publicUrl });
+        }
+      }
+    } catch (e) {
+      Alert.alert("Video Upload Failed", e.message);
+    }
+  };
+
+  // Send message
+  const safeAddMessage = async (data) => {
+    try {
+      await ensureChatExists(chatId, patientId, healthworkerId);
+      await addDoc(collection(firestore, "messages"), {
+        ...data,
+        chatId,
+        senderId: myUid,
+        createdAt: serverTimestamp(),
+        read: false,
+      });
+      await setDoc(
+        doc(firestore, "chats", chatId),
+        {
+          lastMessage: data.message
+            ? data.message
+            : data.imageUrl
+            ? "[image]"
+            : data.videoUrl
+            ? "[video]"
+            : "[media]",
+          lastMessageTime: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      Alert.alert("Send Failed", e.message || "Could not send message");
+      throw e;
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || !myUid || !chatId) return;
+    await safeAddMessage({ message: input.trim() });
+    setInput("");
+  };
+
+  // Fetch both profiles
+  useEffect(() => {
+    if (!myUid || !patientId || !healthworkerId) return;
+    fetchUserProfile(myUid).then(setMyProfile);
+    fetchUserProfile(myUid === patientId ? healthworkerId : patientId).then(
+      setOtherProfile
+    );
+  }, [myUid, patientId, healthworkerId]);
+
+  // Ensure chat exists
+  useEffect(() => {
+    if (!chatId || !myUid || !patientId || !healthworkerId) return;
+    ensureChatExists(chatId, patientId, healthworkerId).catch((e) =>
+      setLoadError("Error creating chat: " + e.message)
+    );
+  }, [chatId, myUid, patientId, healthworkerId]);
+
+  // Subscribe to messages
   useEffect(() => {
     if (!chatId) return;
-
+    setLoading(true);
     const msgQuery = query(
       collection(firestore, "messages"),
       where("chatId", "==", chatId),
       orderBy("createdAt", "desc")
     );
-
-    const unsubscribe = onSnapshot(msgQuery, (snapshot) => {
-      const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setMessages(msgs);
-      setLoading(false);
-    });
-
+    const unsubscribe = onSnapshot(
+      msgQuery,
+      (snapshot) => {
+        const arr = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setMessages(arr);
+        setLoading(false);
+      },
+      (error) => {
+        setLoadError("Permission error: " + error.message);
+        setLoading(false);
+      }
+    );
     return () => unsubscribe();
   }, [chatId]);
 
-  const speak = (text) => {
-    if (!isTTSMuted && text) {
-      Speech.speak(text, {
-        language: t("lang_code") === "yo" ? "yo" : "en-US",
-        rate: 0.5,
-      });
-    }
-  };
-
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    await addDoc(collection(firestore, "messages"), {
-      chatId,
-      senderId: userId,
-      message: input,
-      createdAt: serverTimestamp(),
-      read: false,
-    });
-    speak(input);
-    setInput("");
-    setTypingStatus(false);
-  };
-
-  const startRecording = async () => {
-    const { status } = await Audio.requestPermissionsAsync();
-    if (status !== "granted") return alert(t("mic_permission"));
-
-    const newRecording = new Audio.Recording();
-    await newRecording.prepareToRecordAsync(
-      Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY
-    );
-    await newRecording.startAsync();
-    setRecording(newRecording);
-    speak(t("recording_started"));
-  };
-
-  const stopRecording = async () => {
-    try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      const blob = await (await fetch(uri)).blob();
-
-      const filename = `audio_${Date.now()}.m4a`;
-      const audioRef = ref(storage, `audios/${filename}`);
-      await uploadBytes(audioRef, blob);
-      const downloadURL = await getDownloadURL(audioRef);
-
-      await addDoc(collection(firestore, "messages"), {
-        chatId,
-        senderId: userId,
-        audioUrl: downloadURL,
-        createdAt: serverTimestamp(),
-        read: false,
-      });
-
-      setRecording(null);
-      speak(t("recording_stopped"));
-    } catch (error) {
-      console.error("Audio upload failed", error);
-      speak(t("upload_failed"));
-    }
-  };
-
-  const playAudio = async (url) => {
-    const { sound } = await Audio.Sound.createAsync({ uri: url });
-    await sound.playAsync();
-    speak(t("playing_audio"));
-  };
-
-  const toggleTTSMute = () => {
-    const status = !isTTSMuted;
-    setIsTTSMuted(status);
-    speak(status ? t("tts_muted") : t("tts_unmuted"));
-  };
-
-  const startVideoCall = () => {
-    speak(t("video_call_started"));
-    setShowJitsi(true);
-  };
-
-  if (!chatId || loading) {
+  // UI: Error handling and loading
+  if (loadError) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#00796b" />
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <Text
+            style={{
+              color: "red",
+              fontWeight: "bold",
+              fontSize: 16,
+              marginBottom: 8,
+            }}
+          >
+            {loadError}
+          </Text>
+          <TouchableOpacity
+            style={{
+              backgroundColor: "#00796b",
+              padding: 10,
+              borderRadius: 6,
+              marginTop: 8,
+              minWidth: 120,
+            }}
+            onPress={() => navigation.goBack?.()}
+          >
+            <Text style={{ color: "white", textAlign: "center" }}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
-
-  if (showJitsi) {
+  if (
+    !chatId ||
+    !myUid ||
+    !patientId ||
+    !healthworkerId ||
+    !myProfile ||
+    !otherProfile
+  ) {
     return (
-      <WebView
-        source={{
-          uri: `https://meet.jit.si/${chatId}#userInfo.displayName=\"${encodeURIComponent(
-            patientName || "Patient"
-          )}\"`,
-        }}
-        style={{ flex: 1 }}
-        allowsInlineMediaPlayback
-        javaScriptEnabled
-        mediaPlaybackRequiresUserAction={false}
-      />
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#00796b" />
+        <Text style={{ textAlign: "center", marginTop: 15 }}>
+          Loading chat...
+        </Text>
+      </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.header}>
-        {t("chat_with")} {patientName}
-      </Text>
-
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        inverted
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.messageBubble,
-              item.senderId === userId ? styles.sent : styles.received,
-            ]}
-          >
-            {item.message && (
-              <Text style={styles.messageText}>{item.message}</Text>
-            )}
-            {item.audioUrl && (
-              <TouchableOpacity onPress={() => playAudio(item.audioUrl)}>
-                <Text style={styles.audioPlayText}>{t("play_audio")}</Text>
-              </TouchableOpacity>
-            )}
-            <Text style={styles.timestamp}>
-              {item.createdAt?.toDate?.().toLocaleTimeString?.() || ""}
-            </Text>
-          </View>
-        )}
-      />
-
-      <View style={styles.actionButtons}>
-        <TouchableOpacity style={styles.videoButton} onPress={startVideoCall}>
-          <Text style={styles.videoButtonText}>{t("start_video_call")}</Text>
-        </TouchableOpacity>
+      {/* Header */}
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>
+          Chat:{" "}
+          {myProfile?.role === "healthworker"
+            ? `${myProfile?.name || "Healthworker"} ↔ ${
+                otherProfile?.name || "Patient"
+              }`
+            : `${otherProfile?.name || "Healthworker"} ↔ ${
+                myProfile?.name || "Patient"
+              }`}
+        </Text>
       </View>
-
-      <View style={styles.inputContainer}>
+      {loading ? (
+        <ActivityIndicator size="large" color="#00796b" />
+      ) : (
+        <FlatList
+          data={messages}
+          keyExtractor={(item) => item.id}
+          inverted
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.messageBubble,
+                item.senderId === myUid ? styles.sent : styles.received,
+              ]}
+            >
+              {item.message && (
+                <Text style={styles.messageText}>{item.message}</Text>
+              )}
+              {item.imageUrl && (
+                <Image
+                  source={{ uri: item.imageUrl }}
+                  style={{
+                    width: 180,
+                    height: 130,
+                    marginTop: 5,
+                    borderRadius: 8,
+                  }}
+                  resizeMode="cover"
+                />
+              )}
+              {item.videoUrl && (
+                <Video
+                  source={{ uri: item.videoUrl }}
+                  useNativeControls
+                  style={{ width: 200, height: 140, marginTop: 5 }}
+                  resizeMode="contain"
+                />
+              )}
+              <Text style={styles.timestamp}>
+                {item.createdAt?.toDate?.().toLocaleTimeString?.() || ""}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+      {/* Input/controls */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity onPress={() => setShowAttachments(!showAttachments)}>
+          <Feather
+            name="plus"
+            size={24}
+            color="#444"
+            style={{ marginRight: 8 }}
+          />
+        </TouchableOpacity>
         <TextInput
           style={styles.input}
           value={input}
-          onChangeText={(text) => {
-            setInput(text);
-            setTypingStatus(!!text);
-          }}
+          onChangeText={setInput}
           placeholder={t("type_message")}
         />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-          <Text style={styles.sendText}>{t("send")}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.recordButton}
-          onPress={recording ? stopRecording : startRecording}
-        >
-          <Text style={styles.recordText}>
-            {recording ? t("stop") : t("record")}
-          </Text>
+        <TouchableOpacity onPress={sendMessage}>
+          <Ionicons
+            name="send"
+            size={24}
+            color="#00796b"
+            style={{ marginLeft: 10 }}
+          />
         </TouchableOpacity>
       </View>
-
-      <TouchableOpacity style={styles.toggleTTSButton} onPress={toggleTTSMute}>
-        <Text style={styles.toggleTTSButtonText}>
-          {isTTSMuted ? t("tts_unmuted") : t("tts_muted")}
-        </Text>
-      </TouchableOpacity>
+      {showAttachments && (
+        <View style={styles.attachmentBar}>
+          <TouchableOpacity onPress={pickImage}>
+            <Text style={styles.attachText}>📷 Image</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={pickVideo}>
+            <Text style={styles.attachText}>🎥 Video</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#E8F5E9", padding: 10 },
-  header: {
-    fontSize: 20,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#00796b",
-  },
+  headerContainer: { alignItems: "center", marginBottom: 6 },
+  header: { fontSize: 18, fontWeight: "bold", color: "#00796b" },
   messageBubble: {
     padding: 10,
     borderRadius: 10,
@@ -559,61 +401,26 @@ const styles = StyleSheet.create({
   received: { alignSelf: "flex-start", backgroundColor: "#A5D6A7" },
   messageText: { color: "white", fontSize: 16 },
   timestamp: { fontSize: 12, color: "gray", alignSelf: "flex-end" },
-  inputContainer: {
+  bottomBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: 10,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "white",
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
+    borderRadius: 25,
     borderColor: "#00796b",
-  },
-  sendButton: {
-    backgroundColor: "#00796b",
-    padding: 10,
-    borderRadius: 10,
-    marginLeft: 5,
-  },
-  sendText: { color: "white", fontWeight: "bold" },
-  recordButton: {
-    backgroundColor: "#d32f2f",
-    padding: 10,
-    borderRadius: 10,
-    marginLeft: 5,
-  },
-  recordText: { color: "white", fontWeight: "bold" },
-  audioPlayText: {
-    color: "blue",
-    fontWeight: "bold",
-    textAlign: "center",
-    marginTop: 5,
-  },
-  actionButtons: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginVertical: 10,
-  },
-  videoButton: {
-    backgroundColor: "#0288D1",
-    padding: 15,
-    borderRadius: 10,
-  },
-  videoButtonText: { color: "white", fontWeight: "bold" },
-  toggleTTSButton: {
-    backgroundColor: "#0288D1",
-    padding: 10,
-    borderRadius: 10,
+    borderWidth: 1,
     marginTop: 10,
   },
-  toggleTTSButtonText: {
-    color: "white",
-    fontWeight: "bold",
-    textAlign: "center",
+  input: { flex: 1, padding: 10, borderRadius: 20, fontSize: 16 },
+  attachmentBar: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: "#eee",
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 8,
   },
+  attachText: { fontSize: 16, fontWeight: "bold", color: "#00796b" },
 });
 
-export default HealthWorkerChatScreen;
+export default ChatWithHealthworker;

@@ -5,17 +5,27 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Speech from "expo-speech";
 import { useTranslation } from "react-i18next";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
-import AnimatedModal from "../components/AnimatedModal"; // ✅ Import animated modal
+import AnimatedModal from "../components/AnimatedModal";
+
+// Add a simple gender picker for cross-platform
+const genderOptions = [
+  { label: "Male", value: "male" },
+  { label: "Female", value: "female" },
+  { label: "Other", value: "other" },
+];
 
 const PatientSignupScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const [name, setName] = useState("");
+  const [age, setAge] = useState(""); // NEW
+  const [gender, setGender] = useState(""); // NEW
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -35,8 +45,13 @@ const PatientSignupScreen = ({ navigation }) => {
   };
 
   const handleSignup = async () => {
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !age || !gender) {
       speakAndShowModal(t("all_fields_required"), "error");
+      return;
+    }
+
+    if (isNaN(Number(age)) || Number(age) <= 0) {
+      speakAndShowModal(t("enter_valid_age"), "error");
       return;
     }
 
@@ -50,8 +65,10 @@ const PatientSignupScreen = ({ navigation }) => {
 
       await setDoc(doc(db, "users", uid), {
         uid,
-        name,
+        displayName: name,
         email,
+        age: Number(age), // NEW
+        gender, // NEW
         role: "patient",
         verified: true,
         createdAt: serverTimestamp(),
@@ -77,6 +94,40 @@ const PatientSignupScreen = ({ navigation }) => {
         onChangeText={setName}
         style={styles.input}
       />
+
+      <TextInput
+        placeholder={t("age")}
+        value={age}
+        onChangeText={setAge}
+        keyboardType="numeric"
+        style={styles.input}
+      />
+
+      <View style={styles.genderContainer}>
+        <Text style={styles.genderLabel}>{t("gender")}</Text>
+        <View style={styles.genderOptions}>
+          {genderOptions.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[
+                styles.genderOption,
+                gender === opt.value && styles.genderOptionSelected,
+              ]}
+              onPress={() => setGender(opt.value)}
+            >
+              <Text
+                style={[
+                  styles.genderText,
+                  gender === opt.value && styles.genderTextSelected,
+                ]}
+              >
+                {t(opt.label.toLowerCase())}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       <TextInput
         placeholder={t("email")}
         value={email}
@@ -139,6 +190,42 @@ const styles = StyleSheet.create({
     borderColor: "#00796b",
     borderRadius: 10,
     backgroundColor: "white",
+  },
+  genderContainer: {
+    width: "90%",
+    marginBottom: 12,
+  },
+  genderLabel: {
+    color: "#00796b",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 5,
+  },
+  genderOptions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  genderOption: {
+    flex: 1,
+    paddingVertical: 8,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 7,
+    marginRight: 7,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#00796b33",
+  },
+  genderOptionSelected: {
+    backgroundColor: "#00796b",
+    borderColor: "#00796b",
+  },
+  genderText: {
+    color: "#00796b",
+    fontWeight: "600",
+  },
+  genderTextSelected: {
+    color: "#fff",
   },
   signupButton: {
     backgroundColor: "#00796b",

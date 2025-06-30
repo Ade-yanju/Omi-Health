@@ -12,16 +12,16 @@ import {
   ActivityIndicator,
 } from "react-native";
 import Checkbox from "expo-checkbox";
+import { useTranslation } from "react-i18next";
 import * as Crypto from "expo-crypto";
 import * as Speech from "expo-speech";
-import * as DocumentPicker from "expo-document-picker"; // ✅ New import
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // ✅ For uploading file
 import AnimatedModal from "../components/AnimatedModal";
 
 const HealthWorkerSignup = ({ navigation }) => {
   const { t } = useTranslation();
+  // User data states
   const [name, setName] = useState("");
   const [specialization, setSpecialization] = useState("");
   const [medicalNo, setMedicalNo] = useState("");
@@ -30,23 +30,23 @@ const HealthWorkerSignup = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [policyChecked, setPolicyChecked] = useState(false);
-  const [cvFile, setCvFile] = useState(null); // ✅ CV File
-  const [loading, setLoading] = useState(false);
 
+  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
   const [modalSuccess, setModalSuccess] = useState(false);
 
   const auth = getAuth();
   const db = getFirestore();
-  const storage = getStorage();
 
+  // Text-to-speech helper
   const speak = (text) => {
     Speech.speak(text, {
       language: t("lang_code") === "yo" ? "yo" : "en-US",
     });
   };
 
+  // Modal handler
   const showModal = (message, success = false) => {
     setModalMessage(message);
     setModalSuccess(success);
@@ -54,6 +54,7 @@ const HealthWorkerSignup = ({ navigation }) => {
     speak(message);
   };
 
+  // Generate a strong password for user if needed
   useEffect(() => {
     generateSecurePassword(12).then(setPassword);
   }, []);
@@ -68,28 +69,8 @@ const HealthWorkerSignup = ({ navigation }) => {
       .join("");
   };
 
-  const pickCvFile = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          "application/pdf",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ], // ✅ PDF or DOCX
-      });
-      if (result.type === "success") {
-        setCvFile(result);
-      }
-    } catch (error) {
-      console.error("Document pick error:", error);
-      showModal(t("upload_error"));
-    }
-  };
-
+  // Signup handler
   const handleSignup = async () => {
-    if (!policyChecked) {
-      return showModal(t("agree_policy_message"));
-    }
-
     if (
       !name ||
       !specialization ||
@@ -97,14 +78,20 @@ const HealthWorkerSignup = ({ navigation }) => {
       !placeOfWork ||
       !yearsExperience ||
       !email ||
-      !password ||
-      !cvFile
+      !password
     ) {
-      return showModal(t("all_fields_required_including_cv"));
+      return showModal(t("all_fields_required") || "Please fill all fields.");
+    }
+    if (!policyChecked) {
+      return showModal(
+        t("agree_policy_message") || "You must agree to the policy."
+      );
     }
 
     setLoading(true);
+
     try {
+      // 1. Create Firebase user
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -112,14 +99,7 @@ const HealthWorkerSignup = ({ navigation }) => {
       );
       const { uid } = userCredential.user;
 
-      // ✅ Upload CV to Firebase Storage
-      const response = await fetch(cvFile.uri);
-      const blob = await response.blob();
-      const cvRef = ref(storage, `healthworker_cvs/${uid}_${cvFile.name}`);
-      await uploadBytes(cvRef, blob);
-      const cvUrl = await getDownloadURL(cvRef);
-
-      // ✅ Save everything into Firestore
+      // 2. Save user profile in Firestore
       await setDoc(doc(db, "users", uid), {
         uid,
         name,
@@ -130,17 +110,20 @@ const HealthWorkerSignup = ({ navigation }) => {
         yearsExperience,
         role: "healthworker",
         verified: false,
-        cvUrl, // ✅ Save CV Download Link
         createdAt: serverTimestamp(),
       });
 
-      showModal(t("account_created_verification"), true);
+      showModal(
+        t("account_created_verification") ||
+          "Account created! Awaiting verification.",
+        true
+      );
       setTimeout(() => {
         navigation.navigate("LoginScreen");
       }, 2000);
     } catch (error) {
       console.error("Signup Error:", error.message);
-      showModal(error.message || t("error_occurred"));
+      showModal(error.message || t("error_occurred") || "An error occurred.");
     } finally {
       setLoading(false);
     }
@@ -151,7 +134,6 @@ const HealthWorkerSignup = ({ navigation }) => {
       <StatusBar barStyle="dark-content" backgroundColor="#f0f8ff" />
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>{t("signup_as_healthworker")}</Text>
-
         <TextInput
           style={styles.input}
           placeholder={t("full_name")}
@@ -198,13 +180,6 @@ const HealthWorkerSignup = ({ navigation }) => {
           secureTextEntry
           onChangeText={setPassword}
         />
-
-        {/* ✅ Pick CV Button */}
-        <TouchableOpacity style={styles.uploadButton} onPress={pickCvFile}>
-          <Text style={styles.uploadText}>
-            {cvFile ? cvFile.name : t("upload_cv")}
-          </Text>
-        </TouchableOpacity>
 
         <View style={styles.policyContainer}>
           <Checkbox value={policyChecked} onValueChange={setPolicyChecked} />
@@ -253,6 +228,7 @@ const styles = StyleSheet.create({
     color: "#00796b",
     marginBottom: 20,
     textAlign: "center",
+    marginTop: 36,
   },
   input: {
     width: "100%",
@@ -263,18 +239,6 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     borderColor: "#00796b",
     backgroundColor: "white",
-  },
-  uploadButton: {
-    backgroundColor: "#00796b",
-    padding: 15,
-    borderRadius: 10,
-    width: "100%",
-    alignItems: "center",
-    marginVertical: 10,
-  },
-  uploadText: {
-    color: "white",
-    fontWeight: "bold",
   },
   policyContainer: {
     flexDirection: "row",

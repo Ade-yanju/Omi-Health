@@ -6,13 +6,14 @@ import { getStorage } from "firebase/storage";
 import Constants from "expo-constants";
 // Your Firebase config object
 const firebaseConfig = {
-  apiKey: "AIzaSyADGfkEr6RJ7_r6Nsehlk5zUfjV-UFUfQc",
-  authDomain: "omi-health-6adb9.firebaseapp.com",
-  projectId: "omi-health-6adb9",
-  storageBucket: "omi-health-6adb9.appspot.com", // <- FIXED this line
-  messagingSenderId: "64230223791",
-  appId: "1:64230223791:web:b6d40fb3e094732fb7495a",
-  measurementId: "G-L2R9YM68WR",
+  apiKey: "AIzaSyB8qRv3riVqbBdcbIGvswbKdGuI1GXOjeM",
+  authDomain: "omi-healthcare.firebaseapp.com",
+  databaseURL: "https://omi-healthcare-default-rtdb.firebaseio.com",
+  projectId: "omi-healthcare",
+  storageBucket: "omi-healthcare.firebasestorage.app",
+  messagingSenderId: "1075154794466",
+  appId: "1:1075154794466:web:7635dbba71ec41333dabbb",
+  measurementId: "G-4C3KVDF213",
 };
 
 // Initialize Firebase App
