@@ -1,4 +1,6 @@
-import React, { useEffect, useState, useCallback } from "react";
+// ChatInboxScreen.js
+
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -13,8 +15,9 @@ import {
   query,
   where,
   onSnapshot,
-  doc,
   getDoc,
+  doc,
+  getDocs,
   updateDoc,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -22,92 +25,125 @@ import { firestore } from "../services/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// Fetch user profile by uid
+// Fetch a user profile by UID
 const fetchUserProfile = async (uid) => {
   try {
     const userDoc = await getDoc(doc(firestore, "users", uid));
-    if (userDoc.exists()) return { ...userDoc.data(), id: uid };
-    return { id: uid, name: "Unknown" };
+    return userDoc.exists()
+      ? { id: uid, ...userDoc.data() }
+      : { id: uid, name: "Unknown" };
   } catch {
     return { id: uid, name: "Unknown" };
   }
 };
 
-const ChatInboxScreen = ({ navigation }) => {
+export default function ChatInboxScreen({ navigation }) {
+  const auth = getAuth();
+  const myUid = auth.currentUser?.uid;
+
+  const [profile, setProfile] = useState(null);
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState(null);
+  const [unreadMap, setUnreadMap] = useState({});
 
-  const currentUser = getAuth().currentUser;
-  const myUid = currentUser?.uid;
+  // keep refs to unsubscribe unread subscriptions
+  const unreadUnsubs = useRef({});
 
-  // Fetch my profile
+  // get my own profile (to decide which chat screen to push)
   useEffect(() => {
     if (!myUid) return;
     fetchUserProfile(myUid).then(setProfile);
   }, [myUid]);
 
-  // Listen for all chats (real-time) where user is a participant
+  // subscribe to all chats I'm in
   useEffect(() => {
-    if (!myUid) return;
-    setLoading(true);
+    if (!myUid) return setLoading(false);
 
+    setLoading(true);
     const q = query(
       collection(firestore, "chats"),
       where("participants", "array-contains", myUid)
     );
-
-    // Real-time snapshot
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      if (snapshot.empty) {
+    const unsub = onSnapshot(q, async (snap) => {
+      if (snap.empty) {
         setChats([]);
         setLoading(false);
         return;
       }
 
-      // Fetch all "other" users in all chats
-      const fetchedChats = await Promise.all(
-        snapshot.docs.map(async (docSnap) => {
-          const chat = docSnap.data();
-          chat.id = docSnap.id;
-          const others = (chat.participants || []).filter((id) => id !== myUid);
-          const otherUid = others[0]; // 1:1 chat
-          let otherUser = { name: "Unknown" };
-          if (otherUid) {
-            otherUser = await fetchUserProfile(otherUid);
-          }
+      // build list of chats with the other user's data
+      const fetched = await Promise.all(
+        snap.docs.map(async (docSnap) => {
+          const chat = { id: docSnap.id, ...docSnap.data() };
+          const otherUid = chat.participants.find((u) => u !== myUid);
+          const otherUser = otherUid
+            ? await fetchUserProfile(otherUid)
+            : { id: null, name: "Unknown" };
           return {
             ...chat,
             otherUser,
-            unreadCount: (chat.unread && chat.unread[myUid]) || 0,
+            lastMessage: chat.lastMessage || "",
+            lastMessageTime: chat.lastMessageTime,
           };
         })
       );
 
-      // Sort by latest message
-      fetchedChats.sort(
+      // sort by most recent
+      fetched.sort(
         (a, b) =>
           (b.lastMessageTime?.toMillis?.() || 0) -
           (a.lastMessageTime?.toMillis?.() || 0)
       );
 
-      setChats(fetchedChats);
+      setChats(fetched);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => unsub();
   }, [myUid]);
 
-  // Handler to open chat and reset unread count
+  // subscribe to unread counts for each chat
+  useEffect(() => {
+    // clean up old
+    Object.values(unreadUnsubs.current).forEach((u) => u && u());
+    unreadUnsubs.current = {};
+
+    chats.forEach((chat) => {
+      const qUn = query(
+        collection(firestore, "messages"),
+        where("chatId", "==", chat.id),
+        where("read", "==", false),
+        where("receiverId", "==", myUid)
+      );
+      unreadUnsubs.current[chat.id] = onSnapshot(qUn, (snap) => {
+        setUnreadMap((m) => ({ ...m, [chat.id]: snap.size }));
+      });
+    });
+
+    return () => {
+      Object.values(unreadUnsubs.current).forEach((u) => u && u());
+      unreadUnsubs.current = {};
+    };
+  }, [chats, myUid]);
+
+  // open a chat: mark all its messages read, then navigate
   const openChat = useCallback(
     async (chat) => {
       if (!profile || !myUid) return;
-      // Reset unread count
-      if (chat.unreadCount > 0) {
-        const chatRef = doc(firestore, "chats", chat.id);
-        await updateDoc(chatRef, { [`unread.${myUid}`]: 0 });
-      }
-      // Determine correct navigation target and params based on role
+
+      // mark unread messages as read
+      const qUn = query(
+        collection(firestore, "messages"),
+        where("chatId", "==", chat.id),
+        where("read", "==", false),
+        where("receiverId", "==", myUid)
+      );
+      const snaps = await getDocs(qUn);
+      await Promise.all(
+        snaps.docs.map((d) => updateDoc(d.ref, { read: true }))
+      );
+
+      // navigate to the correct chat screen
       navigation.navigate(
         profile.role === "healthworker"
           ? "ChatWithPatient"
@@ -129,7 +165,7 @@ const ChatInboxScreen = ({ navigation }) => {
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#00796b" />
           <Text style={{ color: "#00796b", marginTop: 10 }}>
-            Loading Chats...
+            Loading chats…
           </Text>
         </View>
       </SafeAreaView>
@@ -141,48 +177,57 @@ const ChatInboxScreen = ({ navigation }) => {
       <FlatList
         data={chats}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.chatItem}
-            onPress={() => openChat(item)}
-          >
-            {item.otherUser.profilePic ? (
-              <Image
-                source={{ uri: item.otherUser.profilePic }}
-                style={styles.avatar}
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={28} color="#555" />
-              </View>
-            )}
-            <View style={styles.chatTextArea}>
-              <Text style={styles.nameText}>{item.otherUser.name}</Text>
-              <Text style={styles.lastMessage} numberOfLines={1}>
-                {item.lastMessage || ""}
-              </Text>
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              {item.lastMessageTime?.toDate && (
-                <Text style={styles.timeText}>
-                  {item.lastMessageTime.toDate().toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              )}
-              {item.unreadCount > 0 && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadText}>{item.unreadCount}</Text>
+        renderItem={({ item }) => {
+          const unreadCount = unreadMap[item.id] || 0;
+          return (
+            <TouchableOpacity
+              style={styles.chatItem}
+              onPress={() => openChat(item)}
+            >
+              {item.otherUser.profilePic ? (
+                <Image
+                  source={{ uri: item.otherUser.profilePic }}
+                  style={styles.avatar}
+                />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person" size={28} color="#555" />
                 </View>
               )}
-            </View>
-          </TouchableOpacity>
-        )}
+              <View style={styles.chatTextArea}>
+                <Text style={styles.nameText}>{item.otherUser.name}</Text>
+                <Text style={styles.lastMessage} numberOfLines={1}>
+                  {item.lastMessage}
+                </Text>
+              </View>
+              <View style={styles.metaArea}>
+                {item.lastMessageTime?.toDate && (
+                  <Text style={styles.timeText}>
+                    {item.lastMessageTime.toDate().toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                )}
+                {unreadCount > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadText}>{unreadCount}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.centered}>
             <Ionicons name="chatbubble-outline" size={64} color="#B2DFDB" />
-            <Text style={{ color: "#777", marginTop: 12, fontSize: 16 }}>
+            <Text
+              style={{
+                color: "#777",
+                marginTop: 12,
+                fontSize: 16,
+              }}
+            >
               No chats yet
             </Text>
           </View>
@@ -190,11 +235,15 @@ const ChatInboxScreen = ({ navigation }) => {
       />
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#E8F5E9" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   chatItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -222,8 +271,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   chatTextArea: { flex: 1, minWidth: 0 },
-  nameText: { fontWeight: "bold", fontSize: 16, color: "#00796b" },
-  lastMessage: { color: "#333", marginTop: 2, fontSize: 14, maxWidth: 180 },
+  nameText: {
+    fontWeight: "bold",
+    fontSize: 16,
+    color: "#00796b",
+  },
+  lastMessage: {
+    color: "#333",
+    marginTop: 2,
+    fontSize: 14,
+    maxWidth: 180,
+  },
+  metaArea: {
+    alignItems: "flex-end",
+  },
   timeText: { color: "#777", fontSize: 11, marginBottom: 2 },
   unreadBadge: {
     minWidth: 22,
@@ -232,7 +293,6 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 2,
     paddingHorizontal: 5,
   },
   unreadText: {
@@ -241,5 +301,3 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
-
-export default ChatInboxScreen;

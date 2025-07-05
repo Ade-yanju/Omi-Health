@@ -1,21 +1,27 @@
-import React, { useState, useEffect, useCallback } from "react";
+// ChatWithPatient.js
+
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   FlatList,
   StyleSheet,
   ActivityIndicator,
   Image,
-  Alert,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
-import { Audio, Video } from "expo-av";
+import { Video } from "expo-av";
 import { useTranslation } from "react-i18next";
-import * as FileSystem from "expo-file-system";
-import { base64StringToBlob } from "blob-util";
+import { Feather } from "@expo/vector-icons";
+
+import AnimatedModal from "../components/AnimatedModal";
+
 import {
   collection,
   query,
@@ -27,36 +33,39 @@ import {
   getDoc,
   setDoc,
   doc,
+  deleteDoc,
 } from "firebase/firestore";
 import { firestore } from "../services/firebase";
-import { supabase } from "../services/supabase";
-import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { getAuth } from "firebase/auth";
 
-// Deterministic chat ID (alphabetical)
+// Cloudinary config
+const CLOUD_NAME = "drnn7agvh";
+const UPLOAD_PRESET = "mobile_preset";
+const CLOUD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`;
+async function uploadToCloudinary(uri, type) {
+  const ext = type === "image" ? "jpg" : "mp4";
+  const mimeType = type === "image" ? "image/jpeg" : "video/mp4";
+  const form = new FormData();
+  form.append("file", { uri, name: `upload.${ext}`, type: mimeType });
+  form.append("upload_preset", UPLOAD_PRESET);
+  form.append("folder", "chat_media");
+  const res = await fetch(CLOUD_URL, { method: "POST", body: form });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error?.message || "Upload failed");
+  return body.secure_url;
+}
+
 const getChatId = (a, b) => [a, b].sort().join("_");
-
-// Fetch user profile
 const fetchUserProfile = async (uid) => {
-  if (!uid) return null;
-  try {
-    const userDoc = await getDoc(doc(firestore, "users", uid));
-    if (userDoc.exists()) return { ...userDoc.data(), id: uid };
-    return null;
-  } catch (e) {
-    console.error(`Error fetching user profile for ${uid}:`, e);
-    return null;
-  }
+  const snap = await getDoc(doc(firestore, "users", uid));
+  return snap.exists() ? { id: uid, ...snap.data() } : null;
 };
-
-// Ensure chat exists in Firestore
-const ensureChatExists = async (chatId, uid1, uid2) => {
-  const chatRef = doc(firestore, "chats", chatId);
-  const chatDoc = await getDoc(chatRef);
-  if (!chatDoc.exists()) {
-    await setDoc(chatRef, {
+const ensureChatExists = async (chatId, u1, u2) => {
+  const ref = doc(firestore, "chats", chatId);
+  if (!(await getDoc(ref)).exists()) {
+    await setDoc(ref, {
       chatId,
-      members: [uid1, uid2], // Match your Firestore rules!
+      participants: [u1, u2],
       status: "active",
       createdAt: serverTimestamp(),
       lastMessage: "",
@@ -65,376 +74,240 @@ const ensureChatExists = async (chatId, uid1, uid2) => {
   }
 };
 
-const ChatWithPatient = ({ route, navigation }) => {
+export default function ChatWithPatient({ route, navigation }) {
   const { t } = useTranslation();
-  const params = route?.params ?? {};
-
-  const patientId = params.patientId;
-  const healthworkerId = params.healthworkerId;
-
-  const currentUser = getAuth().currentUser;
-  const myUid = currentUser?.uid || null;
-
+  const { patientId, healthworkerId } = route.params || {};
+  const auth = getAuth();
+  const myUid = auth.currentUser?.uid;
   const otherUid = myUid === patientId ? healthworkerId : patientId;
   const chatId =
     patientId && healthworkerId ? getChatId(patientId, healthworkerId) : null;
 
+  // ─── state ─────────────────────────────────────────
   const [myProfile, setMyProfile] = useState(null);
   const [otherProfile, setOtherProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [replyingTo, setReplyingTo] = useState(null);
   const [showAttachments, setShowAttachments] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [recording, setRecording] = useState(null);
-  const [recordingDuration, setRecordingDuration] = useState(0);
 
-  // Helper to read local files as Blob
-  const uriToBlob = async (uri, mimeType) => {
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return base64StringToBlob(base64, mimeType);
-  };
+  // modal: for both errors and confirm dialogs
+  const [modal, setModal] = useState({
+    visible: false,
+    message: "",
+    type: "error", // "error" or "confirm"
+    onConfirm: null, // callback if type==="confirm"
+  });
+  const showModal = (message, type = "error", onConfirm = null) =>
+    setModal({ visible: true, message, type, onConfirm });
+  const hideModal = () =>
+    setModal((m) => ({ ...m, visible: false, onConfirm: null }));
 
-  // --- Upload to Supabase Storage ---
-  const uploadToSupabase = useCallback(
-    async (typeFolder, fileUri, fileName, isAudio = false) => {
-      try {
-        if (!supabase || !supabase.storage) {
-          throw new Error("Supabase client is not initialized.");
-        }
-        if (!myUid) throw new Error("User not authenticated.");
-        const folder =
-          typeFolder === "images"
-            ? "images"
-            : typeFolder === "videos"
-            ? "videos"
-            : "audios";
-        const path = `${folder}/${myUid}_${Date.now()}_${fileName}`;
+  // fullscreen media viewer
+  const [mediaViewer, setMediaViewer] = useState({
+    visible: false,
+    uri: null,
+    type: null,
+  });
+  const openMedia = (uri, type) => setMediaViewer({ visible: true, uri, type });
+  const closeMedia = () =>
+    setMediaViewer({ visible: false, uri: null, type: null });
 
-        // Convert the local file to Blob using base64
-        const mime =
-          typeFolder === "images"
-            ? "image/jpeg"
-            : typeFolder === "videos"
-            ? "video/mp4"
-            : "audio/m4a";
-        const blob = await uriToBlob(fileUri, mime);
-
-        const { error } = await supabase.storage
-          .from("chat-media")
-          .upload(path, blob, {
-            cacheControl: "3600",
-            contentType: mime,
-            upsert: false,
-          });
-        if (error) throw error;
-        const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
-        if (!data || !data.publicUrl)
-          throw new Error("Failed to get public URL after upload.");
-
-        return data.publicUrl;
-      } catch (error) {
-        console.error("Supabase upload error:", error);
-        Alert.alert(
-          "Upload Failed",
-          error.message || "Network request failed."
-        );
-        return null;
-      }
-    },
-    [myUid]
-  );
-
-  // Pick image
-  const pickImage = async () => {
-    try {
-      const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permission.status !== "granted") {
-        Alert.alert("Permission Denied", "Image library access required.");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets?.length > 0 && myUid) {
-        const asset = result.assets[0];
-        const uri = asset.uri;
-        const fileName = uri.split("/").pop() || "image.jpg";
-        const publicUrl = await uploadToSupabase("images", uri, fileName);
-        if (publicUrl) {
-          await safeAddMessage({ imageUrl: publicUrl });
-        }
-      }
-    } catch (e) {
-      Alert.alert("Image Upload Failed", e.message);
-    }
-  };
-
-  // Pick video
-  const pickVideo = async () => {
-    try {
-      const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permission.status !== "granted") {
-        Alert.alert("Permission Denied", "Video library access required.");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets?.length > 0 && myUid) {
-        const asset = result.assets[0];
-        const uri = asset.uri;
-        const fileName = uri.split("/").pop() || "video.mp4";
-        const publicUrl = await uploadToSupabase("videos", uri, fileName);
-        if (publicUrl) {
-          await safeAddMessage({ videoUrl: publicUrl });
-        }
-      }
-    } catch (e) {
-      Alert.alert("Video Upload Failed", e.message);
-    }
-  };
-
-  // Audio recording
-  const startRecording = async () => {
-    try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Microphone permission denied.");
-        return;
-      }
-      const newRecording = new Audio.Recording();
-      await newRecording.prepareToRecordAsync(
-        Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY
-      );
-      await newRecording.startAsync();
-      setRecording(newRecording);
-      setRecordingDuration(0);
-      const intervalId = setInterval(async () => {
-        const status = await newRecording.getStatusAsync();
-        if (status.isRecording) {
-          setRecordingDuration(Math.floor(status.durationMillis / 1000));
-        } else {
-          clearInterval(intervalId);
-        }
-      }, 1000);
-    } catch (err) {
-      Alert.alert("Recording error", "Failed to start recording.");
-    }
-  };
-
-  const stopRecording = async () => {
-    try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      const fileName = "audio.m4a";
-      const publicUrl = await uploadToSupabase("audios", uri, fileName, true);
-      if (publicUrl) {
-        await safeAddMessage({ audioUrl: publicUrl });
-      }
-    } catch (err) {
-      Alert.alert("Recording error", "Recording upload failed");
-    } finally {
-      setRecording(null);
-    }
-  };
-
-  // Audio playback
-  const playAudio = async (url) => {
-    const { sound } = await Audio.Sound.createAsync({ uri: url });
-    await sound.playAsync();
-  };
-
-  // Send message to Firestore
+  // ─── add / reply / upload ────────────────────────────
   const safeAddMessage = async (data) => {
-    try {
-      await ensureChatExists(chatId, patientId, healthworkerId);
-      await addDoc(collection(firestore, "messages"), {
-        ...data,
-        chatId,
-        senderId: myUid,
-        createdAt: serverTimestamp(),
-        read: false,
-      });
-      await setDoc(
-        doc(firestore, "chats", chatId),
-        {
-          lastMessage: data.message
-            ? data.message
-            : data.imageUrl
-            ? "[image]"
-            : data.videoUrl
-            ? "[video]"
-            : data.audioUrl
-            ? "[audio]"
-            : "[media]",
-          lastMessageTime: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch (e) {
-      Alert.alert("Send Failed", e.message || "Could not send message");
-      throw e;
+    await ensureChatExists(chatId, patientId, healthworkerId);
+    const payload = {
+      ...data,
+      chatId,
+      senderId: myUid,
+      createdAt: serverTimestamp(),
+      read: false,
+    };
+    if (replyingTo) {
+      payload.replyToId = replyingTo.id;
+      payload.replyToText = replyingTo.message || "[media]";
     }
+    await addDoc(collection(firestore, "messages"), payload);
+    await setDoc(
+      doc(firestore, "chats", chatId),
+      {
+        lastMessage: data.message
+          ? data.message
+          : data.imageUrl
+          ? "[image]"
+          : "[video]",
+        lastMessageTime: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    setReplyingTo(null);
   };
-
-  const sendMessage = async () => {
-    if (!input.trim() || !myUid || !chatId) return;
-    await safeAddMessage({ message: input.trim() });
+  const sendMessage = () => {
+    if (!input.trim()) return;
+    safeAddMessage({ message: input.trim() }).catch((e) =>
+      showModal(e.message, "error")
+    );
     setInput("");
   };
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      return showModal("Permission Denied", "error");
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (!res.canceled && res.assets.length) {
+      try {
+        const url = await uploadToCloudinary(res.assets[0].uri, "image");
+        await safeAddMessage({ imageUrl: url });
+      } catch (e) {
+        showModal(e.message, "error");
+      }
+    }
+  };
+  const pickVideo = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      return showModal("Permission Denied", "error");
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.8,
+    });
+    if (!res.canceled && res.assets.length) {
+      try {
+        const url = await uploadToCloudinary(res.assets[0].uri, "video");
+        await safeAddMessage({ videoUrl: url });
+      } catch (e) {
+        showModal(e.message, "error");
+      }
+    }
+  };
 
-  // Profiles/messages loading
+  // ─── load profiles ─────────────────────────────────────
   useEffect(() => {
-    if (!myUid || !patientId || !healthworkerId) return;
+    if (!myUid) return;
     fetchUserProfile(myUid).then(setMyProfile);
     fetchUserProfile(otherUid).then(setOtherProfile);
-  }, [myUid, patientId, healthworkerId]);
+  }, [myUid, otherUid]);
 
-  useEffect(() => {
-    if (!chatId || !myUid || !patientId || !healthworkerId) return;
-    ensureChatExists(chatId, patientId, healthworkerId).catch((e) =>
-      setLoadError("Error creating chat: " + e.message)
-    );
-  }, [chatId, myUid, patientId, healthworkerId]);
-
+  // ─── subscribe to messages ─────────────────────────────
   useEffect(() => {
     if (!chatId) return;
     setLoading(true);
-    const msgQuery = query(
+    const q = query(
       collection(firestore, "messages"),
       where("chatId", "==", chatId),
       orderBy("createdAt", "desc")
     );
-    const unsubscribe = onSnapshot(
-      msgQuery,
-      (snapshot) => {
-        const arr = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setMessages(arr);
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoading(false);
       },
-      (error) => {
-        setLoadError("Permission error: " + error.message);
+      (err) => {
+        showModal(err.message, "error");
         setLoading(false);
       }
     );
-    return () => unsubscribe();
+    return () => unsub();
   }, [chatId]);
 
-  // --- UI: Error and loading ---
-  if (loadError) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <Text style={styles.errorText}>{loadError}</Text>
-          <TouchableOpacity
-            style={styles.goBackButton}
-            onPress={() => navigation.goBack?.()}
-          >
-            <Text style={styles.goBackText}>Go Back</Text>
-          </TouchableOpacity>
+  // ─── delete via confirm modal ─────────────────────────
+  const promptDelete = (msg) => {
+    showModal("Delete this message?", "confirm", async () => {
+      try {
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        await deleteDoc(doc(firestore, "messages", msg.id));
+      } catch (e) {
+        showModal(e.message, "error");
+      } finally {
+        hideModal();
+      }
+    });
+  };
+
+  // ─── render each bubble ─────────────────────────────────
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      key={item.id}
+      onLongPress={() => promptDelete(item)}
+      onPress={() => setReplyingTo(item)}
+      style={[
+        styles.bubble,
+        item.senderId === myUid ? styles.sent : styles.received,
+      ]}
+    >
+      {item.replyToText && (
+        <View style={styles.replyBox}>
+          <Text style={styles.replyPreview}>{item.replyToText}</Text>
         </View>
-      </SafeAreaView>
-    );
-  }
-  if (
-    !chatId ||
-    !myUid ||
-    !patientId ||
-    !healthworkerId ||
-    !myProfile ||
-    !otherProfile
-  ) {
+      )}
+      {item.message && <Text style={styles.text}>{item.message}</Text>}
+      {item.imageUrl && (
+        <TouchableOpacity onPress={() => openMedia(item.imageUrl, "image")}>
+          <Image source={{ uri: item.imageUrl }} style={styles.media} />
+        </TouchableOpacity>
+      )}
+      {item.videoUrl && (
+        <TouchableOpacity onPress={() => openMedia(item.videoUrl, "video")}>
+          <Video
+            source={{ uri: item.videoUrl }}
+            useNativeControls={false}
+            style={styles.media}
+            resizeMode="cover"
+          />
+          <View style={styles.playIconOverlay}>
+            <Feather name="play" size={32} color="#fff" />
+          </View>
+        </TouchableOpacity>
+      )}
+      <Text style={styles.ts}>
+        {item.createdAt?.toDate().toLocaleTimeString()}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  // ─── loading stub ───────────────────────────────────────
+  if (loading || !myProfile || !otherProfile) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#00796b" />
-        <Text style={{ textAlign: "center", marginTop: 15 }}>
-          Loading chat...
-        </Text>
+        <ActivityIndicator size="large" color="#128C7E" />
       </SafeAreaView>
     );
   }
 
-  // --- Main Chat UI ---
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.headerContainer}>
-        <Text style={styles.header}>
-          Chat:{" "}
-          {myProfile?.role === "healthworker"
-            ? `${myProfile?.name || "Healthworker"} ↔ ${
-                otherProfile?.name || "Patient"
-              }`
-            : `${otherProfile?.name || "Healthworker"} ↔ ${
-                myProfile?.name || "Patient"
-              }`}
-        </Text>
-      </View>
-      {loading ? (
-        <ActivityIndicator size="large" color="#00796b" />
-      ) : (
-        <FlatList
-          data={messages}
-          keyExtractor={(item) => item.id}
-          inverted
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.messageBubble,
-                item.senderId === myUid ? styles.sent : styles.received,
-              ]}
-            >
-              {item.message && (
-                <Text style={styles.messageText}>{item.message}</Text>
-              )}
-              {item.imageUrl && (
-                <Image
-                  source={{ uri: item.imageUrl }}
-                  style={{
-                    width: 180,
-                    height: 130,
-                    marginTop: 5,
-                    borderRadius: 8,
-                  }}
-                  resizeMode="cover"
-                />
-              )}
-              {item.videoUrl && (
-                <Video
-                  source={{ uri: item.videoUrl }}
-                  useNativeControls
-                  style={{ width: 200, height: 140, marginTop: 5 }}
-                  resizeMode="contain"
-                />
-              )}
-              {item.audioUrl && (
-                <TouchableOpacity onPress={() => playAudio(item.audioUrl)}>
-                  <Text style={styles.audioPlayText}>▶ Audio</Text>
-                </TouchableOpacity>
-              )}
-              <Text style={styles.timestamp}>
-                {item.createdAt?.toDate?.().toLocaleTimeString?.() || ""}
-              </Text>
-            </View>
-          )}
-        />
+      <FlatList
+        data={messages}
+        keyExtractor={(i) => i.id}
+        inverted
+        renderItem={renderItem}
+        contentContainerStyle={{ paddingBottom: 10 }}
+      />
+
+      {replyingTo && (
+        <View style={styles.replyBanner}>
+          <Text style={styles.replyingText}>
+            Replying to:{" "}
+            {replyingTo.message
+              ? replyingTo.message.slice(0, 30) + "…"
+              : "[media]"}
+          </Text>
+          <TouchableOpacity onPress={() => setReplyingTo(null)}>
+            <Feather name="x" size={20} color="#444" />
+          </TouchableOpacity>
+        </View>
       )}
-      {/* Input/controls */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity onPress={() => setShowAttachments(!showAttachments)}>
-          <Feather
-            name="plus"
-            size={24}
-            color="#444"
-            style={{ marginRight: 8 }}
-          />
+
+      <View style={styles.inputBar}>
+        <TouchableOpacity onPress={() => setShowAttachments((v) => !v)}>
+          <Feather name="plus" size={24} color="#444" />
         </TouchableOpacity>
         <TextInput
           style={styles.input}
@@ -442,31 +315,13 @@ const ChatWithPatient = ({ route, navigation }) => {
           onChangeText={setInput}
           placeholder={t("type_message")}
         />
-        {recording ? (
-          <TouchableOpacity onPress={stopRecording}>
-            <MaterialCommunityIcons name="stop" size={24} color="red" />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity onPress={startRecording}>
-            <Feather name="mic" size={24} color="#00796b" />
-          </TouchableOpacity>
-        )}
         <TouchableOpacity onPress={sendMessage}>
-          <Ionicons
-            name="send"
-            size={24}
-            color="#00796b"
-            style={{ marginLeft: 10 }}
-          />
+          <Feather name="send" size={24} color="#128C7E" />
         </TouchableOpacity>
       </View>
-      {recording && (
-        <Text style={styles.recordingStatus}>
-          🎙 Recording... {recordingDuration}s
-        </Text>
-      )}
+
       {showAttachments && (
-        <View style={styles.attachmentBar}>
+        <View style={styles.attachBar}>
           <TouchableOpacity onPress={pickImage}>
             <Text style={styles.attachText}>📷 Image</Text>
           </TouchableOpacity>
@@ -475,66 +330,130 @@ const ChatWithPatient = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Fullscreen media modal */}
+      <Modal visible={mediaViewer.visible} transparent>
+        <TouchableWithoutFeedback onPress={closeMedia}>
+          <View style={styles.fullscreenContainer}>
+            {mediaViewer.type === "image" ? (
+              <Image
+                source={{ uri: mediaViewer.uri }}
+                style={styles.fullscreenMedia}
+                resizeMode="contain"
+              />
+            ) : (
+              <Video
+                source={{ uri: mediaViewer.uri }}
+                useNativeControls
+                style={styles.fullscreenMedia}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <AnimatedModal
+        visible={modal.visible}
+        message={modal.message}
+        type={modal.type}
+        onClose={hideModal}
+        onConfirm={modal.onConfirm}
+      />
     </SafeAreaView>
   );
-};
+}
 
+const { width, height } = Dimensions.get("window");
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#E8F5E9", padding: 10 },
-  headerContainer: { alignItems: "center", marginBottom: 6 },
-  header: { fontSize: 18, fontWeight: "bold", color: "#00796b" },
-  messageBubble: {
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 5,
-    maxWidth: "80%",
+  container: {
+    flex: 1,
+    backgroundColor: "#ECE5DD",
+    padding: 8,
   },
-  sent: { alignSelf: "flex-end", backgroundColor: "#00796b" },
-  received: { alignSelf: "flex-start", backgroundColor: "#A5D6A7" },
-  messageText: { color: "white", fontSize: 16 },
-  timestamp: { fontSize: 12, color: "gray", alignSelf: "flex-end" },
-  audioPlayText: { color: "white", fontWeight: "bold", marginTop: 6 },
-  bottomBar: {
+  bubble: {
+    padding: 8,
+    borderRadius: 16,
+    marginVertical: 4,
+    maxWidth: "75%",
+    position: "relative",
+  },
+  sent: {
+    backgroundColor: "#DCF8C6",
+    alignSelf: "flex-end",
+    borderTopRightRadius: 2,
+  },
+  received: {
+    backgroundColor: "#fff",
+    alignSelf: "flex-start",
+    borderTopLeftRadius: 2,
+  },
+  replyBox: {
+    backgroundColor: "rgba(0,0,0,0.05)",
+    padding: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: "#128C7E",
+    marginBottom: 4,
+  },
+  replyPreview: { color: "#555", fontStyle: "italic" },
+  text: { color: "#000", fontSize: 16 },
+  media: {
+    width: 180,
+    height: 120,
+    marginTop: 6,
+    borderRadius: 8,
+    backgroundColor: "#000",
+  },
+  playIconOverlay: {
+    position: "absolute",
+    top: "40%",
+    left: "40%",
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 24,
+    padding: 4,
+  },
+  ts: {
+    fontSize: 10,
+    color: "#666",
+    alignSelf: "flex-end",
+    marginTop: 4,
+  },
+  replyBanner: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
+    backgroundColor: "#FFF8E1",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  replyingText: { flex: 1, color: "#333", fontStyle: "italic" },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#fff",
-    borderRadius: 25,
-    borderColor: "#00796b",
+    borderRadius: 24,
     borderWidth: 1,
-    marginTop: 10,
+    borderColor: "#ddd",
+    padding: 6,
+    marginTop: 8,
   },
-  input: { flex: 1, padding: 10, borderRadius: 20, fontSize: 16 },
-  recordingStatus: {
-    color: "#d32f2f",
-    textAlign: "center",
-    marginTop: 6,
-    fontWeight: "bold",
-  },
-  attachmentBar: {
+  input: { flex: 1, marginHorizontal: 8, height: 40, fontSize: 16 },
+  attachBar: {
     flexDirection: "row",
     justifyContent: "space-around",
-    backgroundColor: "#eee",
+    backgroundColor: "#f0f0f0",
     padding: 10,
-    borderRadius: 10,
-    marginTop: 8,
+    borderRadius: 12,
+    marginTop: 6,
   },
-  attachText: { fontSize: 16, fontWeight: "bold", color: "#00796b" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  errorText: {
-    color: "red",
-    fontWeight: "bold",
-    fontSize: 16,
-    marginBottom: 8,
+  attachText: { fontWeight: "600", color: "#128C7E" },
+  fullscreenContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  goBackButton: {
-    backgroundColor: "#00796b",
-    padding: 10,
-    borderRadius: 6,
-    marginTop: 8,
-    minWidth: 120,
+  fullscreenMedia: {
+    width: width - 20,
+    height: height - 100,
   },
-  goBackText: { color: "white", textAlign: "center" },
 });
-
-export default ChatWithPatient;

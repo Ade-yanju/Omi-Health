@@ -1,51 +1,101 @@
-// components/AnimatedModal.js
+// AnimatedModal.js
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import Modal from "react-native-modal";
+import {
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+} from "react-native";
 
-const AnimatedModal = ({ visible, message, success, onClose }) => {
+const AnimatedModal = ({
+  visible,
+  message,
+  type = "error",
+  onClose,
+  onConfirm,
+}) => {
+  const backgroundColor =
+    type === "success" ? "#4CAF50" : type === "confirm" ? "#FFC107" : "#F44336";
+
   return (
-    <Modal isVisible={visible}>
-      <View
-        style={[
-          styles.modalContent,
-          { backgroundColor: success ? "#C8E6C9" : "#FFCDD2" },
-        ]}
-      >
-        <Text
-          style={[styles.modalText, { color: success ? "#2E7D32" : "#C62828" }]}
-        >
-          {message}
-        </Text>
-        <TouchableOpacity onPress={onClose} style={styles.button}>
-          <Text style={styles.buttonText}>Close</Text>
-        </TouchableOpacity>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.overlay}>
+        <View style={[styles.modalBox, { borderColor: backgroundColor }]}>
+          <Text style={[styles.message, { color: backgroundColor }]}>
+            {message}
+          </Text>
+
+          {type === "confirm" ? (
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.button} onPress={onConfirm}>
+                <Text style={[styles.buttonText, { color: "#4CAF50" }]}>
+                  Yes
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={onClose}>
+                <Text style={[styles.buttonText, { color: "#F44336" }]}>
+                  No
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <Text style={styles.buttonText}>Close</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  modalContent: {
-    padding: 20,
-    borderRadius: 12,
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
     alignItems: "center",
   },
-  modalText: {
+  modalBox: {
+    width: "80%",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 2,
+  },
+  message: {
     fontSize: 16,
     fontWeight: "bold",
+    marginBottom: 15,
     textAlign: "center",
   },
-  button: {
-    marginTop: 15,
-    backgroundColor: "#00796b",
+  closeButton: {
+    alignSelf: "center",
+    marginTop: 10,
     paddingVertical: 8,
     paddingHorizontal: 20,
     borderRadius: 8,
+    backgroundColor: "#eee",
+  },
+  buttonRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 10,
+  },
+  button: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
   },
   buttonText: {
-    color: "white",
     fontWeight: "bold",
+    fontSize: 16,
   },
 });
 

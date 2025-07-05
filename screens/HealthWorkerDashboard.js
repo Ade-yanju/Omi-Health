@@ -1,3 +1,5 @@
+// HealthWorkerDashboard.js
+
 import React, { useEffect, useState, useRef } from "react";
 import {
   View,
@@ -25,7 +27,7 @@ import {
   where,
 } from "firebase/firestore";
 import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
-import { useNavigation } from "@react-navigation/native"; // <-- Use this for navigation safety
+import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../services/supabase";
 
 const features = [
@@ -45,7 +47,7 @@ const features = [
   },
 ];
 
-const HealthWorkerDashboard = (props) => {
+export default function HealthWorkerDashboard(props) {
   const { t } = useTranslation();
   const [healthWorker, setHealthWorker] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -54,180 +56,158 @@ const HealthWorkerDashboard = (props) => {
 
   const auth = getAuth();
   const db = getFirestore();
-  const navigation = props.navigation || useNavigation(); // Always works
+  const navigation = props.navigation || useNavigation();
 
+  // ensure we only speak once
   const ttsHasRun = useRef(false);
 
-  // Welcome with TTS
+  // Speak dashboard summary once
   useEffect(() => {
     if (healthWorker && !ttsHasRun.current) {
-      const dashboardText = `${t("welcome_back")} ${healthWorker.name}. ${t(
+      const msg = `${t("welcome_back")} ${healthWorker.name}. ${t(
         "dashboard_overview",
-        {
-          appointments: appointmentBadge,
-          messages: chatBadge,
-        }
+        { appointments: appointmentBadge, messages: chatBadge }
       )}`;
-      Speech.speak(dashboardText, {
+      Speech.speak(msg, {
         language: t("lang_code") === "yo" ? "yo" : "en-US",
         pitch: 1,
         rate: 1,
       });
       ttsHasRun.current = true;
     }
-  }, [healthWorker, t, appointmentBadge, chatBadge]);
+  }, [healthWorker, appointmentBadge, chatBadge]);
 
-  // Listen for user profile and auth status
+  // Auth listener & load profile
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        // No user: go to login screen
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Login" }], // Update route name to match your navigator!
-        });
+        navigation.reset({ index: 0, routes: [{ name: "LoginScreen" }] });
       }
     });
 
     const user = auth.currentUser;
     if (!user) {
       setLoading(false);
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Login" }],
-      });
-      return () => unsubscribeAuth();
+      navigation.reset({ index: 0, routes: [{ name: "LoginScreen" }] });
+      return unsubAuth;
     }
 
-    const ref = doc(db, "users", user.uid);
-    const unsubscribeUser = onSnapshot(ref, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    const userRef = doc(db, "users", user.uid);
+    const unsubUser = onSnapshot(userRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
         if (data.role === "healthworker") {
-          setHealthWorker(data);
+          setHealthWorker({ id: user.uid, ...data });
         } else {
-          // Not a healthworker; sign out and redirect
           signOut(auth).finally(() =>
-            navigation.reset({ index: 0, routes: [{ name: "Login" }] })
+            navigation.reset({ index: 0, routes: [{ name: "LoginScreen" }] })
           );
         }
-      } else {
-        setHealthWorker(null);
       }
       setLoading(false);
     });
 
     return () => {
-      unsubscribeAuth();
-      unsubscribeUser();
+      unsubAuth();
+      unsubUser();
     };
-  }, [db, auth, navigation]);
+  }, [auth, db, navigation]);
 
-  // Real-time notification badges
+  // Real-time badges
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
 
-    // Appointment badge
+    // Appointments badge
     const apptQ = query(
       collection(db, "appointments"),
       where("healthworkerId", "==", user.uid),
       where("status", "in", ["pending", "scheduled_by_patient"])
     );
-    const unsubAppointments = onSnapshot(apptQ, (snap) => {
+    const unsubAppts = onSnapshot(apptQ, (snap) => {
       setAppointmentBadge(snap.size);
     });
 
-    // Chat badge (sum unread)
+    // Chat badge (only if participant)
     const chatQ = query(
       collection(db, "chats"),
-      where("healthworkerId", "==", user.uid),
+      where("participants", "array-contains", user.uid),
       where("unreadForHealthWorker", ">", 0)
     );
     const unsubChats = onSnapshot(chatQ, (snap) => {
-      let unread = 0;
-      snap.forEach((doc) => {
-        unread += doc.data().unreadForHealthWorker || 0;
+      let cnt = 0;
+      snap.forEach((d) => {
+        cnt += d.data().unreadForHealthWorker || 0;
       });
-      setChatBadge(unread);
+      setChatBadge(cnt);
     });
 
     return () => {
-      unsubAppointments();
+      unsubAppts();
       unsubChats();
     };
-  }, [db, auth]);
+  }, [auth, db]);
 
-  // Profile picture upload
+  // Profile pic upload via Supabase
   const pickImageAndUpload = async () => {
     try {
-      const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          "Permission Required",
-          "Permission to access media library is required."
-        );
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permission Required", "Media library access is required.");
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.7,
       });
+      if (res.canceled) return;
 
-      if (!result.canceled) {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Not signed in");
-        const imageUri = result.assets[0].uri;
-        const imageResponse = await fetch(imageUri);
-        const imageBlob = await imageResponse.blob();
-        const fileExt = imageUri.split(".").pop();
-        const fileName = `${user.uid}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from("profile-pictures")
-          .upload(fileName, imageBlob, { upsert: true });
-        if (uploadError) throw uploadError;
+      const uri = res.assets[0].uri;
+      const blob = await (await fetch(uri)).blob();
+      const ext = uri.split(".").pop();
+      const fileName = `${auth.currentUser.uid}.${ext}`;
 
-        const { data } = supabase.storage
-          .from("profile-pictures")
-          .getPublicUrl(fileName);
+      const { error } = await supabase.storage
+        .from("profile-pictures")
+        .upload(fileName, blob, { upsert: true });
+      if (error) throw error;
 
-        await updateDoc(doc(db, "users", user.uid), {
-          profilePic: data.publicUrl,
-        });
-      }
-    } catch (error) {
-      console.error("Supabase upload failed", error);
-      Alert.alert("Upload Error", "Failed to upload profile picture.");
+      const { data } = supabase.storage
+        .from("profile-pictures")
+        .getPublicUrl(fileName);
+
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        profilePic: data.publicUrl,
+      });
+    } catch (e) {
+      console.error("Upload failed", e);
+      Alert.alert("Upload Error", "Could not upload profile picture.");
     }
   };
 
-  const navigateToChat = async () => {
-    try {
-      const user = auth.currentUser;
-      if (!user || !healthWorker) {
-        Alert.alert("Error", "User information not available.");
-        return;
-      }
-      navigation.navigate("ChatInbox", {
-        userId: user.uid,
-        healthWorkerName: healthWorker.name,
-      });
-    } catch (error) {
-      console.error("Chat navigation error:", error);
-      Alert.alert("Navigation Error", "Failed to navigate to chat.");
+  // Navigate to ChatInbox
+  const navigateToChat = () => {
+    const user = auth.currentUser;
+    if (!user || !healthWorker) {
+      Alert.alert("Error", "User info not available.");
+      return;
     }
+    navigation.navigate("ChatInbox", {
+      userId: user.uid,
+      healthWorkerName: healthWorker.name,
+    });
   };
 
   // Logout handler
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+      navigation.reset({ index: 0, routes: [{ name: "LoginScreen" }] });
     } catch (e) {
-      Alert.alert("Logout Failed", "Unable to logout at this time.");
+      console.error("Logout failed", e);
+      Alert.alert("Logout Failed", "Unable to logout right now.");
     }
   };
 
@@ -242,9 +222,10 @@ const HealthWorkerDashboard = (props) => {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
       >
+        {/* Profile Section */}
         <View style={styles.profileSection}>
           <TouchableOpacity onPress={pickImageAndUpload}>
             {healthWorker?.profilePic ? (
@@ -264,6 +245,8 @@ const HealthWorkerDashboard = (props) => {
             {healthWorker?.yearsExperience} {t("years")}
           </Text>
         </View>
+
+        {/* Feature Cards */}
         <FlatList
           data={features}
           numColumns={2}
@@ -272,17 +255,14 @@ const HealthWorkerDashboard = (props) => {
             <View style={{ flex: 1 }}>
               <TouchableOpacity
                 style={styles.card}
-                onPress={() => {
-                  if (item.screen === "ChatInbox") {
-                    navigateToChat();
-                  } else {
-                    navigation.navigate(item.screen);
-                  }
-                }}
+                onPress={() =>
+                  item.screen === "ChatInbox"
+                    ? navigateToChat()
+                    : navigation.navigate(item.screen)
+                }
               >
                 <Text style={styles.emoji}>{item.icon}</Text>
                 <Text style={styles.cardText}>{t(item.name)}</Text>
-                {/* Notification badge */}
                 {item.badge === "appointmentBadge" && appointmentBadge > 0 && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>
@@ -300,17 +280,17 @@ const HealthWorkerDashboard = (props) => {
               </TouchableOpacity>
             </View>
           )}
-          ListFooterComponent={
-            <View style={{ height: 80 }} /> // Space for the logout button at the bottom
-          }
+          ListFooterComponent={<View style={{ height: 80 }} />}
         />
+
+        {/* Logout Button */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>{t("Logout") || "Logout"}</Text>
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#E8F5E9", padding: 20 },
@@ -342,7 +322,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emoji: { fontSize: 30, marginBottom: 5 },
-  cardText: { color: "white", fontSize: 16, fontWeight: "bold" },
+  cardText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
   badge: {
     position: "absolute",
     top: 7,
@@ -358,11 +338,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#fff",
   },
-  badgeText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 13,
-  },
+  badgeText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
   logoutBtn: {
     backgroundColor: "#D32F2F",
     borderRadius: 10,
@@ -372,12 +348,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 12,
   },
-  logoutText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 18,
-    letterSpacing: 1.1,
-  },
+  logoutText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
+  loading: { textAlign: "center", marginTop: 15 },
 });
-
-export default HealthWorkerDashboard;
